@@ -6,7 +6,7 @@ check: lint format-check types test dead docs-check
 fix:
 	$(VENV)/ruff check --fix .
 	$(VENV)/ruff format .
-	$(VENV)/mdformat .
+	$(VENV)/mdformat *.md
 
 lint:          ## 規則檢查
 	$(VENV)/ruff check .
@@ -19,6 +19,6 @@ test:          ## 測試 + 覆蓋率門檻
 dead:          ## 沒人用的程式碼
 	$(VENV)/vulture
 docs-check:    ## markdown 排版
-	$(VENV)/mdformat --check .
+	$(VENV)/mdformat --check *.md
 
 .PHONY: check fix lint format-check types test dead docs-check

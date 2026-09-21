@@ -28,6 +28,9 @@ BLANKS = {"--", "---", "-----", "", "X", "x"}
 #: 星期六是 5,所以 weekday 小於 5 就是平日
 SATURDAY = 5
 
+#: 本益比在第 16 欄(索引 15)
+PER_COLUMN = 15
+
 #: 星期六是 5,所以小於 5 就是平日
 SATURDAY = 5
 
@@ -55,6 +58,8 @@ class Bar:
     low: float | None
     close: float | None
     volume: int
+    #: 本益比。虧損或 EPS 為零時證交所填 0,所以 0 代表「沒有獲利」而不是「很便宜」
+    per: float | None
 
 
 def parse_day(
@@ -85,6 +90,7 @@ def parse_day(
                 low=to_float(str(row[7])),
                 close=to_float(str(row[8])),
                 volume=int(volume) if volume is not None else 0,
+                per=to_float(str(row[15])) if len(row) > PER_COLUMN else None,
             )
         )
     return bars

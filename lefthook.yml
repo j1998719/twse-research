@@ -12,4 +12,4 @@ pre-push:
     vulture:
       run: .venv/bin/vulture
     mdformat:
-      run: .venv/bin/mdformat --check .
+      run: .venv/bin/mdformat --check *.md

@@ -347,3 +347,103 @@ class TestCache:
         assert got is not None
         bars = parse_day(got, day)
         assert bars[0].close == 100.5
+
+
+class TestPer:
+    def test_虧損的公司本益比是零(self):
+        from datetime import date
+
+        from src.prices import parse_day
+
+        payload = {
+            "tables": [
+                {
+                    "fields": [
+                        "證券代號",
+                        "證券名稱",
+                        "成交股數",
+                        "成交筆數",
+                        "成交金額",
+                        "開盤價",
+                        "最高價",
+                        "最低價",
+                        "收盤價",
+                        "漲跌(+/-)",
+                        "漲跌價差",
+                        "最後揭示買價",
+                        "最後揭示買量",
+                        "最後揭示賣價",
+                        "最後揭示賣量",
+                        "本益比",
+                    ],
+                    "data": [
+                        [
+                            "1310",
+                            "台苯",
+                            "1,000",
+                            "1",
+                            "1",
+                            "8.7",
+                            "8.8",
+                            "8.6",
+                            "8.75",
+                            "+",
+                            "0.05",
+                            "8.74",
+                            "1",
+                            "8.75",
+                            "1",
+                            "0.00",
+                        ],
+                        [
+                            "1217",
+                            "愛之味",
+                            "1,000",
+                            "1",
+                            "1",
+                            "9.9",
+                            "10.0",
+                            "9.9",
+                            "9.98",
+                            "+",
+                            "0.08",
+                            "9.97",
+                            "1",
+                            "9.98",
+                            "1",
+                            "15.12",
+                        ],
+                    ],
+                }
+            ]
+        }
+        bars = parse_day(payload, date(2026, 9, 18))
+        assert bars[0].per == 0.0
+        assert bars[1].per == 15.12
+
+    def test_欄位不足時本益比是空的(self):
+        from datetime import date
+
+        from src.prices import parse_day
+
+        payload = {
+            "tables": [
+                {
+                    "fields": [
+                        "證券代號",
+                        "證券名稱",
+                        "成交股數",
+                        "成交筆數",
+                        "成交金額",
+                        "開盤價",
+                        "最高價",
+                        "最低價",
+                        "收盤價",
+                    ],
+                    "data": [
+                        ["1310", "台苯", "1,000", "1", "1", "8.7", "8.8", "8.6", "8.75"]
+                    ],
+                }
+            ]
+        }
+        assert parse_day(payload, date(2026, 9, 18))[0].per is None
