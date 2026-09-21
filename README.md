@@ -47,3 +47,30 @@ artifact 的 CSP 禁止外部腳本,只有 Google Fonts 例外。
 所以 `web/src/report.ts` 的 `REQUIRED_KEYS` 是單一來源,
 `tests/test_report_contract.py` 會比對實際輸出;
 `parseReport()` 在執行期再檢查一次,缺欄位直接報錯而不是顯示 undefined。
+
+## 每日自動更新
+
+```bash
+./update.sh   # 抓資料 → 算統計 → 建置網頁,約兩分鐘(有快取)
+```
+
+已設定 cron,週一到五 18:00 自動執行:
+
+```
+0 18 * * 1-5 ~/twse-research/update.sh >> ~/twse-research/data/cron.log 2>&1
+```
+
+排在 18:00 是因為台股 13:30 收盤,證交所的盤後資料(注意股、處置、法人買賣超)
+約 15:00 前後才齊全,留兩三小時的餘裕。
+
+腳本用 `set -euo pipefail`,任何一步失敗就中止 —— 不要拿抓了一半的資料
+蓋掉前一天正常的輸出。
+
+**注意**:`~/Library/LaunchAgents` 在這台機器上是 root 所有(MDM 管理),
+所以用 cron 而不是 launchd。換機器時要重設。
+
+### 自動化到哪裡為止
+
+cron 會自動產生 `data/out/index.html`,但**發布到 artifact 網址這一步沒有自動化** ——
+那需要透過 Claude Code 呼叫發布工具。要完全無人值守的話,得改成推到
+GitHub Pages 或其他靜態託管。

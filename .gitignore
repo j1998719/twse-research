@@ -10,3 +10,6 @@ data/
 
 # Node
 node_modules/
+
+# 執行紀錄
+*.log

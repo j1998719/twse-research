@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.j1998719.twse-research</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chiao-yuyang/twse-research/update.sh</string>
+  </array>
+
+  <!-- 台股 13:30 收盤,證交所盤後資料約 15:00 前後齊全,留餘裕排在 18:00 -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <!-- 開機時若錯過排程,補跑一次 -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/chiao-yuyang/twse-research/data/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/chiao-yuyang/twse-research/data/launchd.err.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/chiao-yuyang/twse-research</string>
+</dict>
+</plist>
