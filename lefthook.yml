@@ -1,0 +1,11 @@
+pre-push:
+  parallel: true
+  commands:
+    ruff-lint:
+      run: .venv/bin/ruff check .
+    ruff-format:
+      run: .venv/bin/ruff format --check .
+    mypy:
+      run: .venv/bin/mypy src
+    pytest:
+      run: .venv/bin/pytest -q

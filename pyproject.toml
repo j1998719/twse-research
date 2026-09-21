@@ -1,0 +1,36 @@
+[project]
+name = "twse-watch"
+version = "0.1.0"
+description = "台股注意股／處置股資料與回測"
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+# E/F 基本錯誤, I 匯入排序, UP 現代語法, B 常見地雷, SIM 可簡化, RUF ruff 自己的規則
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "PTH", "RET"]
+ignore = [
+    "ANN401",  # 允許 Any
+    "E501",    # 過長的行交給 formatter 處理
+    # 這是中文專案,全形字元是正常內容不是打錯;
+    # 而且「～」是證交所資料裡真實出現的字元,不能改成半形
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN", "RUF012"]  # 測試不強制標型別,也允許直接寫 dict 當測試資料
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unreachable = true
+# 第三方套件沒有型別標註時不報錯
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

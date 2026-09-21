@@ -1,0 +1,136 @@
+from datetime import date
+
+import pytest
+
+from src.twse import (
+    Notice,
+    is_common_stock,
+    parse_notices,
+    parse_period,
+    parse_punishes,
+    roc_to_date,
+)
+
+
+class TestRocDate:
+    def test_民國轉西元_點分隔(self):
+        assert roc_to_date("115.08.04") == date(2026, 8, 4)
+
+    def test_民國轉西元_斜線分隔(self):
+        assert roc_to_date("115/08/21") == date(2026, 8, 21)
+
+    def test_跨年不會算錯(self):
+        assert roc_to_date("114/12/31") == date(2025, 12, 31)
+        assert roc_to_date("115/01/01") == date(2026, 1, 1)
+
+    def test_前後空白不影響(self):
+        assert roc_to_date("  115/03/05  ") == date(2026, 3, 5)
+
+    def test_看不懂的格式要報錯(self):
+        with pytest.raises(ValueError, match="看不懂的日期"):
+            roc_to_date("2026-08-04")
+
+
+class TestCommonStock:
+    def test_四位數字是普通股(self):
+        assert is_common_stock("2330")
+        assert is_common_stock("8033")
+
+    def test_權證六位數要排除(self):
+        assert not is_common_stock("033945")
+        assert not is_common_stock("035348")
+
+    def test_ETF要排除(self):
+        # 0050 也是四位數,但 00 開頭的是 ETF 不是普通股
+        assert not is_common_stock("0050")
+        assert not is_common_stock("0056")
+
+    def test_特別股帶英文要排除(self):
+        assert not is_common_stock("2891B")
+
+
+class TestParsePeriod:
+    def test_全形波浪號(self):
+        assert parse_period("115/08/24～115/08/28") == (
+            date(2026, 8, 24),
+            date(2026, 8, 28),
+        )
+
+    def test_半形波浪號也要認得(self):
+        assert parse_period("115/08/24~115/08/28") == (
+            date(2026, 8, 24),
+            date(2026, 8, 28),
+        )
+
+    def test_只有一天時起迄相同(self):
+        assert parse_period("115/08/24") == (date(2026, 8, 24), date(2026, 8, 24))
+
+
+class TestParseNotices:
+    payload = {
+        "data": [
+            [1, "033945", "國巨統一58購02", "1", "跌幅異常", "115.08.04", "11.10", "-----"],
+            [2, "2330", "台積電", "3", "漲幅異常", "115.08.05", "1200.00", "25.3"],
+        ]
+    }
+
+    def test_預設只留普通股(self):
+        rows = parse_notices(self.payload)
+        assert [r.code for r in rows] == ["2330"]
+
+    def test_關掉過濾就全都要(self):
+        rows = parse_notices(self.payload, common_only=False)
+        assert len(rows) == 2
+
+    def test_欄位對應正確(self):
+        row = parse_notices(self.payload)[0]
+        assert row == Notice(
+            day=date(2026, 8, 5),
+            code="2330",
+            name="台積電",
+            reason="漲幅異常",
+            close="1200.00",
+            per="25.3",
+        )
+
+
+class TestParsePunishes:
+    payload = {
+        "data": [
+            [
+                1,
+                "115/08/21",
+                "8033",
+                "雷虎",
+                2,
+                "連續三次",
+                "115/08/24～115/08/28",
+                "第二次處置",
+                "處置內容說明",
+                "",
+            ],
+            [
+                2,
+                "115/08/21",
+                "035348",
+                "強茂統一59購02",
+                1,
+                "連續三次",
+                "115/08/24～115/08/28",
+                "第一次處置",
+                "處置內容說明",
+                "",
+            ],
+        ]
+    }
+
+    def test_排除權證(self):
+        rows = parse_punishes(self.payload)
+        assert [r.code for r in rows] == ["8033"]
+
+    def test_起迄與次數(self):
+        row = parse_punishes(self.payload)[0]
+        assert row.start == date(2026, 8, 24)
+        assert row.end == date(2026, 8, 28)
+        assert row.nth == 2
+        assert row.measure == "第二次處置"
