@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from src.backtest import (
+    Timing,
     as_number,
     exit_returns,
     next_trading_day,
@@ -271,7 +272,7 @@ class TestPreReleaseRun:
         from src.backtest import pre_release_run
 
         # 1/6 結束 -> 1/7 出關,前一個交易日是 1/6
-        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["release"] == date(2026, 1, 7)
         assert out.iloc[0]["sell_day"] == date(2026, 1, 6)
         assert out.iloc[0]["buy_day"] == date(2026, 1, 2)
@@ -279,7 +280,7 @@ class TestPreReleaseRun:
     def test_用收盤價進出(self):
         from src.backtest import pre_release_run
 
-        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         # 1/2 收盤 115 買,1/6 收盤 125 賣
         assert out.iloc[0]["buy"] == 115.0
         assert out.iloc[0]["sell"] == 125.0
@@ -288,7 +289,7 @@ class TestPreReleaseRun:
     def test_淨報酬扣成本(self):
         from src.backtest import pre_release_run
 
-        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["gross"] - out.iloc[0]["net"] == pytest.approx(
             ROUND_TRIP_COST_PCT, abs=0.01
         )
@@ -296,7 +297,9 @@ class TestPreReleaseRun:
     def test_往前數超出資料範圍就略過(self):
         from src.backtest import pre_release_run
 
-        assert pre_release_run(self.punishes, PRICES, entry=-99, exit_=-1).empty
+        assert pre_release_run(
+            self.punishes, PRICES, timing=Timing(entry=-99, exit=-1)
+        ).empty
 
 
 class TestShiftBounds:
@@ -349,3 +352,47 @@ class TestEventRate:
         # 2026-01-01 到 2026-03-01 共 60 天
         assert got["涵蓋天數"] == 60
         assert got["每月平均"] == round(3 / (60 / 30.44), 1)
+
+
+class TestPriceConvention:
+    punishes = pd.DataFrame(
+        [
+            {
+                "code": 1111,
+                "name": "測試股",
+                "nth": 1,
+                "measure": "第一次處置",
+                "start": date(2026, 1, 1),
+                "end": date(2026, 1, 6),
+            }
+        ]
+    )
+
+    def test_可以指定用開盤價進出(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(
+            self.punishes,
+            PRICES,
+            timing=Timing(entry=-2, exit=-1, entry_price="open", exit_price="open"),
+        )
+        # 1/2 開盤 110 買,1/6 開盤 120 賣(130 是 1/7 的開盤)
+        assert out.iloc[0]["buy"] == 110.0
+        assert out.iloc[0]["sell"] == 120.0
+
+    def test_兩邊混用(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(
+            self.punishes, PRICES, timing=Timing(entry=-2, exit=-1, entry_price="open")
+        )
+        # 開盤 110 買、收盤 125 賣
+        assert out.iloc[0]["buy"] == 110.0
+        assert out.iloc[0]["sell"] == 125.0
+
+    def test_預設兩邊都是收盤(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
+        assert out.iloc[0]["buy"] == 115.0
+        assert out.iloc[0]["sell"] == 125.0

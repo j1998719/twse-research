@@ -305,23 +305,41 @@ PRE_RELEASE_ENTRY = -6
 PRE_RELEASE_EXIT = -1
 
 
+@dataclass(frozen=True)
+class Timing:
+    """什麼時候進出、用哪個價格。
+
+    兩邊都用開盤是最保守的假設 —— 幅度大約是收盤進出的一半,方向仍然成立。
+    """
+
+    #: 相對出關日的交易日偏移,負數是出關之前
+    entry: int = PRE_RELEASE_ENTRY
+    exit: int = PRE_RELEASE_EXIT
+    #: "close" 或 "open"
+    entry_price: str = "close"
+    exit_price: str = "close"
+
+
 def pre_release_run(
     punishes: pd.DataFrame,
     prices: pd.DataFrame,
     index: dict[date, float] | None = None,
-    entry: int = PRE_RELEASE_ENTRY,
-    exit_: int = PRE_RELEASE_EXIT,
+    timing: Timing | None = None,
 ) -> pd.DataFrame:
     """處置後半段買進,出關前一日賣出。
 
     以出關日為原點(t=0)對齊,而不是以公告日 —— 處置長度有 5 日也有 10 日,
     用公告日對齊會把兩種混在一起。對齊之後看得出漲勢在 t-1 見頂,
-    出關當天就回跌,所以出場要在出關前一日的收盤。
+    出關當天就回跌,所以出場要在出關前一日。
+
     """
     index = index or {}
+    timing = timing or Timing()
     days = trading_days(prices)
     panels = build_panels(prices)
     close_px = panels["close"]
+    buy_px = panels[timing.entry_price]
+    sell_px = panels[timing.exit_price]
 
     records: list[dict[str, object]] = []
     for raw in punishes.to_dict("records"):
@@ -329,14 +347,14 @@ def pre_release_run(
         release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
         if release is None or code not in close_px.columns:
             continue
-        buy_day = shift_trading_day(days, release, entry)
-        sell_day = shift_trading_day(days, release, exit_)
+        buy_day = shift_trading_day(days, release, timing.entry)
+        sell_day = shift_trading_day(days, release, timing.exit)
         if buy_day is None or sell_day is None:
             continue
         if buy_day not in close_px.index or sell_day not in close_px.index:
             continue
-        buy = as_number(close_px.at[buy_day, code])
-        sell = as_number(close_px.at[sell_day, code])
+        buy = as_number(buy_px.at[buy_day, code])
+        sell = as_number(sell_px.at[sell_day, code])
         if buy is None or sell is None or buy <= 0:
             continue
 
