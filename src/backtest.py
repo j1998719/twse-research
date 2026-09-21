@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 import pandas as pd
+
+from src.market import ROUND_TRIP_COST_PCT, limit_up
 
 
 #: 新制上路日:處置改 5 個營業日、撮合改約 2 分鐘
@@ -53,29 +56,90 @@ def build_panels(prices: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """轉成 日期 × 股票代號 的寬表,查價才快。"""
     return {
         field: prices.pivot_table(index="day", columns="code", values=field)
-        for field in ("open", "close")
+        for field in ("open", "high", "low", "close")
+    }
+
+
+def opened_limit_up(
+    open_px: float, low: float | None, prev_close: float | None
+) -> bool:
+    """一開盤就鎖漲停 —— 這種情況散戶通常買不到。
+
+    條件是開盤價已達漲停,而且盤中沒有跌回漲停之下(low 也在漲停價)。
+    """
+    if prev_close is None or prev_close <= 0:
+        return False
+    cap = limit_up(prev_close)
+    return open_px >= cap - 1e-9 and (low is None or low >= cap - 1e-9)
+
+
+def _index_return(
+    index: dict[date, float], start: pd.Timestamp, end: pd.Timestamp
+) -> float | None:
+    """大盤同期報酬(%)。進場是開盤,所以基準起點用前一個交易日的收盤。"""
+    a = index.get(start.date())
+    b = index.get(end.date())
+    if a is None or b is None or a <= 0:
+        return None
+    return (b / a - 1) * 100
+
+
+@dataclass(frozen=True)
+class PriceView:
+    """查價要用的東西。包成一包,函式的參數才不會長到看不懂。"""
+
+    days: pd.DatetimeIndex
+    close: pd.DataFrame
+    index: dict[date, float]
+
+
+def _horizon_row(
+    view: PriceView,
+    code: object,
+    release: pd.Timestamp,
+    base: pd.Timestamp,
+    entry: float,
+    horizon: int,
+) -> dict[str, float | None]:
+    """某個持有天數的毛報酬、扣成本後、以及扣掉大盤之後的超額。"""
+    target = shift_trading_day(view.days, release, horizon)
+    if target is None or target not in view.close.index:
+        return {f"g{horizon}": None, f"n{horizon}": None, f"x{horizon}": None}
+    out = as_number(view.close.at[target, code])
+    if out is None:
+        return {f"g{horizon}": None, f"n{horizon}": None, f"x{horizon}": None}
+
+    gross = (out / entry - 1) * 100
+    net = gross - ROUND_TRIP_COST_PCT
+    market = _index_return(view.index, base, target)
+    return {
+        f"g{horizon}": round(gross, 2),
+        f"n{horizon}": round(net, 2),
+        f"x{horizon}": None if market is None else round(net - market, 2),
     }
 
 
 def exit_returns(
     punishes: pd.DataFrame,
     prices: pd.DataFrame,
+    index: dict[date, float] | None = None,
     horizons: tuple[int, ...] = (0, 1, 3, 5, 10),
 ) -> pd.DataFrame:
     """每一次處置出關後,持有 N 個交易日的報酬率(%)。
 
-    第 0 天 = 出關日當天開盤買、收盤賣。
+    第 0 天 = 出關日當天開盤買、收盤賣。三種報酬:
+    g = 毛報酬、n = 扣掉來回交易成本、x = 再扣掉大盤同期漲跌(超額報酬)。
     """
+    index = index or {}
     days = trading_days(prices)
     panels = build_panels(prices)
-    open_px, close_px = panels["open"], panels["close"]
+    open_px, low_px, close_px = panels["open"], panels["low"], panels["close"]
+    view = PriceView(days=days, close=close_px, index=index)
 
     records: list[dict[str, object]] = []
-    # itertuples 的型別太鬆,改用 dict 逐列取值,順便把型別轉明確
     for raw in punishes.to_dict("records"):
         code = raw["code"]
-        end_day = pd.Timestamp(str(raw["end"]))
-        release = next_trading_day(days, end_day)
+        release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
         if release is None or code not in open_px.columns:
             continue
         if release not in open_px.index:
@@ -83,6 +147,15 @@ def exit_returns(
         entry = as_number(open_px.at[release, code])
         if entry is None or entry <= 0:
             continue
+
+        # 出關前一個交易日的收盤,用來算漲停價和大盤基準
+        base = shift_trading_day(days, release, -1)
+        prev_close = (
+            as_number(close_px.at[base, code])
+            if base is not None and base in close_px.index
+            else None
+        )
+        locked = opened_limit_up(entry, as_number(low_px.at[release, code]), prev_close)
 
         record: dict[str, object] = {
             "code": code,
@@ -93,16 +166,22 @@ def exit_returns(
             "end": raw["end"],
             "release": release.date(),
             "entry": entry,
+            "prev_close": prev_close,
+            # 一開盤就鎖漲停,散戶買不到 —— 這種樣本要排除,不然會高估報酬
+            "locked_up": locked,
             "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
         }
         for horizon in horizons:
-            target = shift_trading_day(days, release, horizon)
-            value: float | None = None
-            if target is not None and target in close_px.index:
-                out = as_number(close_px.at[target, code])
-                if out is not None:
-                    value = round((out / entry - 1) * 100, 2)
-            record[f"r{horizon}"] = value
+            record.update(
+                _horizon_row(
+                    view,
+                    code,
+                    release,
+                    base if base is not None else release,
+                    entry,
+                    horizon,
+                )
+            )
         records.append(record)
 
     return pd.DataFrame(records)
@@ -121,3 +200,25 @@ def summarise(returns: pd.DataFrame, column: str) -> dict[str, float]:
         "最差%": round(float(series.min()), 1),
         "最好%": round(float(series.max()), 1),
     }
+
+
+def flag_exrights(
+    returns: pd.DataFrame,
+    prices: pd.DataFrame,
+    exrights: set[tuple[date, str]],
+    horizon: int = 10,
+) -> pd.Series:
+    """持有期間內有沒有遇到除權息。
+
+    我們存的是未還原股價,除權息當天價格會斷崖式下跌 ——
+    那不是真的跌。這種樣本算出來的報酬是假的,要標出來排除。
+    """
+    days = trading_days(prices)
+    flags: list[bool] = []
+    for raw in returns.to_dict("records"):
+        release = pd.Timestamp(str(raw["release"]))
+        where = int(days.searchsorted(release))
+        window = days[where : where + horizon + 1]
+        code = str(raw["code"])
+        flags.append(any((d.date(), code) in exrights for d in window))
+    return pd.Series(flags, index=returns.index)
