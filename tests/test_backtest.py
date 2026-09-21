@@ -17,7 +17,9 @@ DAYS = ["2026-01-01", "2026-01-02", "2026-01-06", "2026-01-07", "2026-01-09"]
 PRICES = pd.DataFrame(
     [
         {"day": d, "code": 1111, "open": o, "close": c}
-        for d, o, c in zip(DAYS, [100, 110, 120, 130, 140], [105, 115, 125, 135, 145])
+        for d, o, c in zip(
+            DAYS, [100, 110, 120, 130, 140], [105, 115, 125, 135, 145], strict=True
+        )
     ]
 ).assign(day=lambda df: pd.to_datetime(df.day))
 

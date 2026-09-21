@@ -4,5 +4,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
-data/raw/
+# 抓下來和算出來的資料都可以重跑產生,不進版控
+data/
 .env
