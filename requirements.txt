@@ -1,0 +1,6 @@
+mypy==2.3.1
+mypy_extensions==1.1.0
+pandas==3.0.6
+pandas-stubs==3.0.5.260914
+pytest==9.1.1
+ruff==0.16.8
