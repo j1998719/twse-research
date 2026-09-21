@@ -190,3 +190,47 @@ class TestExrights:
         returns = pd.DataFrame([{"code": 1111, "release": date(2026, 1, 6)}])
         ex = {(date(2026, 1, 7), "9999")}
         assert not flag_exrights(returns, PRICES, ex, horizon=3).iloc[0]
+
+
+class TestHoldThrough:
+    punishes = pd.DataFrame(
+        [
+            {
+                "code": 1111,
+                "name": "測試股",
+                "nth": 1,
+                "measure": "第一次處置",
+                "start": date(2026, 1, 2),
+                "end": date(2026, 1, 6),
+            }
+        ]
+    )
+
+    def test_進場是處置首日開盤(self):
+        from src.backtest import hold_through
+
+        out = hold_through(self.punishes, PRICES, horizons=(0,))
+        assert out.iloc[0]["begin"] == date(2026, 1, 2)
+        assert out.iloc[0]["entry"] == 110.0
+
+    def test_出場是出關日收盤(self):
+        from src.backtest import hold_through
+
+        out = hold_through(self.punishes, PRICES, horizons=(0,))
+        # 1/6 結束 -> 1/7 出關,收盤 135;1/2 開盤 110 買
+        assert out.iloc[0]["release"] == date(2026, 1, 7)
+        assert out.iloc[0]["g0"] == round((135 / 110 - 1) * 100, 2)
+
+    def test_處置首日不是交易日就往後找(self):
+        from src.backtest import hold_through
+
+        weekend = self.punishes.assign(start=[date(2026, 1, 3)])
+        out = hold_through(weekend, PRICES, horizons=(0,))
+        assert out.iloc[0]["begin"] == date(2026, 1, 6)
+
+    def test_多抱幾天(self):
+        from src.backtest import hold_through
+
+        out = hold_through(self.punishes, PRICES, horizons=(0, 1))
+        # 出關日後一個交易日是 1/9,收盤 145
+        assert out.iloc[0]["g1"] == round((145 / 110 - 1) * 100, 2)

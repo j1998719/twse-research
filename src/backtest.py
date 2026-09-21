@@ -222,3 +222,68 @@ def flag_exrights(
         code = str(raw["code"])
         flags.append(any((d.date(), code) in exrights for d in window))
     return pd.Series(flags, index=returns.index)
+
+
+def hold_through(
+    punishes: pd.DataFrame,
+    prices: pd.DataFrame,
+    index: dict[date, float] | None = None,
+    horizons: tuple[int, ...] = (0, 1, 3, 5),
+) -> pd.DataFrame:
+    """處置期間買進,出關後賣出。
+
+    進場是處置首日開盤 —— 關禁閉期間仍然可以交易,只是改成集合競價。
+    出場分兩段:出關日收盤(horizon 0),以及再多抱 N 個交易日。
+    賭的是流動性被人為壓縮時價格偏低,恢復之後回彈。
+    """
+    index = index or {}
+    days = trading_days(prices)
+    panels = build_panels(prices)
+    open_px, low_px, close_px = panels["open"], panels["low"], panels["close"]
+    view = PriceView(days=days, close=close_px, index=index)
+
+    records: list[dict[str, object]] = []
+    for raw in punishes.to_dict("records"):
+        code = raw["code"]
+        begin = _first_trading_day(days, pd.Timestamp(str(raw["start"])))
+        release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
+        if begin is None or release is None or code not in open_px.columns:
+            continue
+        entry = as_number(open_px.at[begin, code])
+        if entry is None or entry <= 0:
+            continue
+
+        before = shift_trading_day(days, begin, -1)
+        prev_close = (
+            as_number(close_px.at[before, code])
+            if before is not None and before in close_px.index
+            else None
+        )
+        record: dict[str, object] = {
+            "code": code,
+            "name": str(raw["name"]),
+            "nth": int(raw["nth"]),
+            "start": raw["start"],
+            "end": raw["end"],
+            "begin": begin.date(),
+            "release": release.date(),
+            "entry": entry,
+            "locked_up": opened_limit_up(
+                entry, as_number(low_px.at[begin, code]), prev_close
+            ),
+            "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
+        }
+        base = before if before is not None else begin
+        for horizon in horizons:
+            record.update(_horizon_row(view, code, release, base, entry, horizon))
+        records.append(record)
+
+    return pd.DataFrame(records)
+
+
+def _first_trading_day(
+    days: pd.DatetimeIndex, on_or_after: pd.Timestamp
+) -> pd.Timestamp | None:
+    """當天就是交易日就用當天,否則往後找。"""
+    later = days[days >= on_or_after]
+    return later[0] if len(later) else None
