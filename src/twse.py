@@ -85,6 +85,15 @@ class Notice:
     per: str
 
 
+# 「處置措施」欄的文字 -> 第幾次處置。「人工管制撮合」是另一種措施,不編號。
+NTH_BY_MEASURE = {"第一次處置": 1, "第二次處置": 2}
+
+
+def nth_of(measure: str) -> int:
+    """第幾次處置;不是編號型措施(例如人工管制撮合)回 0。"""
+    return NTH_BY_MEASURE.get(measure.strip(), 0)
+
+
 @dataclass(frozen=True)
 class Punish:
     """一次處置公告。"""
@@ -92,11 +101,13 @@ class Punish:
     announced: date
     code: str
     name: str
+    #: 第幾次處置,取自「處置措施」。
+    #: 注意:API 另有「累計」欄,那個值是相對於查詢區間算的,換個區間就變,不可用。
     nth: int
+    measure: str
     condition: str
     start: date
     end: date
-    measure: str
     detail: str = field(repr=False)
 
 
@@ -136,16 +147,17 @@ def parse_punishes(
         if common_only and not is_common_stock(code):
             continue
         start, end = parse_period(str(row[6]))
+        measure = str(row[7]).strip()
         rows.append(
             Punish(
                 announced=roc_to_date(str(row[1])),
                 code=code,
                 name=str(row[3]).strip(),
-                nth=int(row[4]),
+                nth=nth_of(measure),
+                measure=measure,
                 condition=str(row[5]).strip(),
                 start=start,
                 end=end,
-                measure=str(row[7]).strip(),
                 detail=str(row[8]).strip(),
             )
         )

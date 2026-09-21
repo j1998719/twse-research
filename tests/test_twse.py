@@ -69,7 +69,16 @@ class TestParsePeriod:
 class TestParseNotices:
     payload = {
         "data": [
-            [1, "033945", "國巨統一58購02", "1", "跌幅異常", "115.08.04", "11.10", "-----"],
+            [
+                1,
+                "033945",
+                "國巨統一58購02",
+                "1",
+                "跌幅異常",
+                "115.08.04",
+                "11.10",
+                "-----",
+            ],
             [2, "2330", "台積電", "3", "漲幅異常", "115.08.05", "1200.00", "25.3"],
         ]
     }
@@ -132,5 +141,44 @@ class TestParsePunishes:
         row = parse_punishes(self.payload)[0]
         assert row.start == date(2026, 8, 24)
         assert row.end == date(2026, 8, 28)
-        assert row.nth == 2
         assert row.measure == "第二次處置"
+
+    def test_第幾次要看處置措施而不是累計欄(self):
+        # 「累計」欄(這裡是 2)是相對於查詢區間算的,換個區間就變,不能當第幾次用。
+        # 這筆的累計是 2 但措施是第一次處置,正確答案是 1。
+        payload = {
+            "data": [
+                [
+                    1,
+                    "115/08/21",
+                    "8033",
+                    "雷虎",
+                    8,
+                    "連續五次",
+                    "115/08/24～115/08/28",
+                    "第一次處置",
+                    "",
+                    "",
+                ]
+            ]
+        }
+        assert parse_punishes(payload)[0].nth == 1
+
+    def test_人工管制撮合不編號(self):
+        payload = {
+            "data": [
+                [
+                    1,
+                    "115/08/21",
+                    "8033",
+                    "雷虎",
+                    1,
+                    "連續五次",
+                    "115/08/24",
+                    "人工管制撮合",
+                    "",
+                    "",
+                ]
+            ]
+        }
+        assert parse_punishes(payload)[0].nth == 0
