@@ -71,6 +71,10 @@ artifact 的 CSP 禁止外部腳本,只有 Google Fonts 例外。
 
 ### 自動化到哪裡為止
 
-cron 會自動產生 `data/out/index.html`,但**發布到 artifact 網址這一步沒有自動化** ——
-那需要透過 Claude Code 呼叫發布工具。要完全無人值守的話,得改成推到
-GitHub Pages 或其他靜態託管。
+這是**刻意的半自動**:
+
+- cron 每天自動更新資料並產生 `data/out/index.html`
+- 發布到網址是手動的 —— 要看的時候再請 Claude 發布一次
+
+評估過 Cloudflare Pages 之類的靜態託管可以做到全自動,但要多一組憑證和權限設定。
+以「偶爾看一次」的使用頻率來說,那個成本不划算。哪天需要天天看再說。
