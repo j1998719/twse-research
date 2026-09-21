@@ -2,11 +2,11 @@
 name = "twse-watch"
 version = "0.1.0"
 description = "台股注意股／處置股資料與回測"
-requires-python = ">=3.9"
+requires-python = ">=3.13"  # finlab 需要 3.10 以上
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py313"
 
 [tool.ruff.lint]
 # E/F 基本錯誤, I 匯入排序, UP 現代語法, B 常見地雷, SIM 可簡化, RUF ruff 自己的規則
@@ -25,7 +25,7 @@ ignore = [
 "tests/*" = ["ANN", "RUF012"]  # 測試不強制標型別,也允許直接寫 dict 當測試資料
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.13"
 strict = true
 warn_unreachable = true
 # 第三方套件沒有型別標註時不報錯

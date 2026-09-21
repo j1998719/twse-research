@@ -1,0 +1,123 @@
+"""證交所每日收盤行情。
+
+一次請求拿一天的全市場資料,比一檔一檔抓快十倍。
+"""
+
+from __future__ import annotations
+
+import json
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from datetime import date, timedelta
+from pathlib import Path
+from typing import Any
+
+from src.twse import UA, is_common_stock
+
+INDEX_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+
+#: 沒有成交時證交所會填這些符號,不是數字
+BLANKS = {"--", "---", "-----", "", "X", "x"}
+
+
+def to_float(text: str) -> float | None:
+    """ "1,234.50" -> 1234.5;沒成交的符號回 None。"""
+    clean = text.strip().replace(",", "")
+    if clean in BLANKS:
+        return None
+    try:
+        return float(clean)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class Bar:
+    """一檔股票一天的價量。"""
+
+    day: date
+    code: str
+    name: str
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: int
+
+
+def parse_day(
+    payload: dict[str, Any], day: date, *, common_only: bool = True
+) -> list[Bar]:
+    """從當日行情的回應裡挑出個股表並轉成 Bar。"""
+    table = None
+    for candidate in payload.get("tables") or []:
+        if "證券代號" in (candidate.get("fields") or []):
+            table = candidate
+            break
+    if table is None:
+        return []
+
+    bars: list[Bar] = []
+    for row in table.get("data") or []:
+        code = str(row[0]).strip()
+        if common_only and not is_common_stock(code):
+            continue
+        volume = to_float(str(row[2]))
+        bars.append(
+            Bar(
+                day=day,
+                code=code,
+                name=str(row[1]).strip(),
+                open=to_float(str(row[5])),
+                high=to_float(str(row[6])),
+                low=to_float(str(row[7])),
+                close=to_float(str(row[8])),
+                volume=int(volume) if volume is not None else 0,
+            )
+        )
+    return bars
+
+
+def fetch_day(
+    day: date, cache_dir: Path, *, pause: float = 1.5
+) -> dict[str, Any] | None:
+    """抓一天。非交易日回 None。"""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"mi_index_{day:%Y%m%d}.json"
+    if cached.exists():
+        raw = cached.read_text(encoding="utf-8")
+        if not raw.strip():
+            return None
+        hit: dict[str, Any] = json.loads(raw)
+        return hit
+
+    url = f"{INDEX_URL}?date={day:%Y%m%d}&type=ALLBUT0999&response=json"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError):
+        time.sleep(pause * 4)  # 被擋就等久一點再讓呼叫端重試
+        raise
+
+    time.sleep(pause)
+    if payload.get("stat") != "OK":
+        # 非交易日:寫一個空檔案記住,下次不用再問
+        cached.write_text("", encoding="utf-8")
+        return None
+
+    cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return payload
+
+
+def weekdays(start: date, end: date) -> list[date]:
+    """週一到週五。國定假日靠 API 回非交易日來排除。"""
+    days: list[date] = []
+    cursor = start
+    while cursor <= end:
+        if cursor.weekday() < 5:
+            days.append(cursor)
+        cursor += timedelta(days=1)
+    return days

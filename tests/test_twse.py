@@ -182,3 +182,92 @@ class TestParsePunishes:
             ]
         }
         assert parse_punishes(payload)[0].nth == 0
+
+
+class TestPrices:
+    def test_千分位轉數字(self):
+        from src.prices import to_float
+
+        assert to_float("1,234.50") == 1234.5
+        assert to_float(" 15.00 ") == 15.0
+
+    def test_沒成交的符號回None(self):
+        from src.prices import to_float
+
+        for blank in ["--", "---", "-----", "", "X"]:
+            assert to_float(blank) is None
+
+    def test_解析當日行情(self):
+        from datetime import date
+
+        from src.prices import parse_day
+
+        payload = {
+            "tables": [
+                {"fields": ["其他表"], "data": []},
+                {
+                    "fields": [
+                        "證券代號",
+                        "證券名稱",
+                        "成交股數",
+                        "成交筆數",
+                        "成交金額",
+                        "開盤價",
+                        "最高價",
+                        "最低價",
+                        "收盤價",
+                    ],
+                    "data": [
+                        [
+                            "00400A",
+                            "主動國泰",
+                            "36,138,014",
+                            "6,037",
+                            "538,660,510",
+                            "14.90",
+                            "15.01",
+                            "14.80",
+                            "15.00",
+                        ],
+                        [
+                            "2330",
+                            "台積電",
+                            "20,000,000",
+                            "9,000",
+                            "1,000",
+                            "1,200.00",
+                            "1,210.00",
+                            "1,195.00",
+                            "1,205.00",
+                        ],
+                        [
+                            "1101",
+                            "台泥",
+                            "1,000",
+                            "10",
+                            "1,000",
+                            "--",
+                            "--",
+                            "--",
+                            "--",
+                        ],
+                    ],
+                },
+            ]
+        }
+        bars = parse_day(payload, date(2026, 9, 18))
+        # 00400A 帶英文字母,不是普通股
+        assert [b.code for b in bars] == ["2330", "1101"]
+        assert bars[0].close == 1205.0
+        assert bars[0].volume == 20000000
+        # 當天沒成交:價格是 None 而不是 0,才不會被當成跌到零
+        assert bars[1].close is None
+        assert bars[1].volume == 1000
+
+    def test_只抓平日(self):
+        from datetime import date
+
+        from src.prices import weekdays
+
+        days = weekdays(date(2026, 9, 18), date(2026, 9, 22))  # 五六日一二
+        assert days == [date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 22)]
