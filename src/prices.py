@@ -11,19 +11,29 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, timedelta
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.twse import UA, is_common_stock
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 INDEX_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
 
 #: 沒有成交時證交所會填這些符號,不是數字
 BLANKS = {"--", "---", "-----", "", "X", "x"}
 
+#: 星期六是 5,所以 weekday 小於 5 就是平日
+SATURDAY = 5
+
+#: 星期六是 5,所以小於 5 就是平日
+SATURDAY = 5
+
 
 def to_float(text: str) -> float | None:
-    """ "1,234.50" -> 1234.5;沒成交的符號回 None。"""
+    """把「1,234.50」轉成 1234.5;沒成交的符號回 None。"""
     clean = text.strip().replace(",", "")
     if clean in BLANKS:
         return None
@@ -94,9 +104,10 @@ def fetch_day(
         return hit
 
     url = f"{INDEX_URL}?date={day:%Y%m%d}&type=ALLBUT0999&response=json"
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    # S310:網址由本模組的常數拼成,不是外部輸入,沒有 file: 之類的風險
+    req = urllib.request.Request(url, headers={"User-Agent": UA})  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
             payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError):
         time.sleep(pause * 4)  # 被擋就等久一點再讓呼叫端重試
@@ -117,7 +128,7 @@ def weekdays(start: date, end: date) -> list[date]:
     days: list[date] = []
     cursor = start
     while cursor <= end:
-        if cursor.weekday() < 5:
+        if cursor.weekday() < SATURDAY:
             days.append(cursor)
         cursor += timedelta(days=1)
     return days

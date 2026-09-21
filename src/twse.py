@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+
 NOTICE_URL = "https://www.twse.com.tw/rwd/zh/announcement/notice"
 PUNISH_URL = "https://www.twse.com.tw/rwd/zh/announcement/punish"
 
@@ -21,24 +22,30 @@ PUNISH_URL = "https://www.twse.com.tw/rwd/zh/announcement/punish"
 # 00 開頭的四位數是 ETF(0050、0056),權證是六位數,特別股帶英文字母
 COMMON_STOCK = re.compile(r"^(?!00)\d{4}$")
 
+#: 民國日期是「年 月 日」三段
+DATE_PARTS = 3
+#: 民國年不可能有四位數;超過就是誤傳了西元
+ROC_YEAR_MAX = 999
+
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 
 def roc_to_date(text: str) -> date:
     """民國日期轉西元。接受 "115.08.04" 與 "115/08/21" 兩種寫法。"""
     parts = re.split(r"[./-]", text.strip())
-    if len(parts) != 3:
+    if len(parts) != DATE_PARTS:
         msg = f"看不懂的日期:{text!r}"
         raise ValueError(msg)
     year, month, day = (int(p) for p in parts)
     # 民國年不可能有四位數。擋住西元日期被當成民國年默默算出 3937 年
-    if year >= 1000:
+    if year > ROC_YEAR_MAX:
         msg = f"看不懂的日期,這像是西元不是民國:{text!r}"
         raise ValueError(msg)
     return date(year + 1911, month, day)
 
 
 def is_common_stock(code: str) -> bool:
+    """是不是上市普通股。ETF、權證、特別股都會回 False。"""
     return bool(COMMON_STOCK.match(code.strip()))
 
 
@@ -56,8 +63,9 @@ def fetch(
             hit: dict[str, Any] = json.loads(cached.read_text(encoding="utf-8"))
             return hit
 
-    req = urllib.request.Request(url + params, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    # S310:網址由本模組的常數拼成,不是外部輸入,沒有 file: 之類的風險
+    req = urllib.request.Request(url + params, headers={"User-Agent": UA})  # noqa: S310
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
         payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
 
     if payload.get("stat") != "OK":
@@ -112,6 +120,7 @@ class Punish:
 
 
 def parse_notices(payload: dict[str, Any], *, common_only: bool = True) -> list[Notice]:
+    """把注意股 API 的回應轉成 Notice。"""
     rows: list[Notice] = []
     for row in payload.get("data") or []:
         code = str(row[1]).strip()
@@ -131,7 +140,7 @@ def parse_notices(payload: dict[str, Any], *, common_only: bool = True) -> list[
 
 
 def parse_period(text: str) -> tuple[date, date]:
-    """ "115/08/24～115/08/28" -> (起, 迄)。單日的話起迄相同。"""
+    """把「115/08/24～115/08/28」拆成起訖兩個日期。單日的話起迄相同。"""
     parts = re.split(r"[~～]", text.strip())
     first = roc_to_date(parts[0])
     last = roc_to_date(parts[1]) if len(parts) > 1 else first
@@ -141,6 +150,7 @@ def parse_period(text: str) -> tuple[date, date]:
 def parse_punishes(
     payload: dict[str, Any], *, common_only: bool = True
 ) -> list[Punish]:
+    """把處置股 API 的回應轉成 Punish。"""
     rows: list[Punish] = []
     for row in payload.get("data") or []:
         code = str(row[2]).strip()

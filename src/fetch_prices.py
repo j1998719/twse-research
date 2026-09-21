@@ -13,11 +13,13 @@ from pathlib import Path
 
 from src.prices import Bar, fetch_day, parse_day, weekdays
 
+
 RAW = Path("data/raw/prices")
 OUT = Path("data/out")
 
 
 def main() -> None:
+    """抓取期間內每個交易日的全市場行情並輸出成一張長表。"""
     start = date.fromisoformat(sys.argv[1])
     end = date.fromisoformat(sys.argv[2])
     days = weekdays(start, end)
@@ -35,7 +37,8 @@ def main() -> None:
         for i, day in enumerate(days, 1):
             try:
                 payload = fetch_day(day, RAW)
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
+                # 單日失敗不該中斷整批,記下來跳過就好
                 print(f"  {day} 失敗({type(exc).__name__}),略過", flush=True)
                 continue
             if payload is None:

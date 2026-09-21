@@ -9,3 +9,7 @@ pre-push:
       run: .venv/bin/mypy src
     pytest:
       run: .venv/bin/pytest -q
+    vulture:
+      run: .venv/bin/vulture
+    mdformat:
+      run: .venv/bin/mdformat --check .

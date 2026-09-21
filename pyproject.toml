@@ -1,36 +1,130 @@
 [project]
-name = "twse-watch"
+name = "twse-research"
 version = "0.1.0"
 description = "台股注意股／處置股資料與回測"
-requires-python = ">=3.13"  # finlab 需要 3.10 以上
+requires-python = ">=3.13"
 
+# ─────────────────────────── Ruff ───────────────────────────
 [tool.ruff]
 line-length = 88
 target-version = "py313"
 
 [tool.ruff.lint]
-# E/F 基本錯誤, I 匯入排序, UP 現代語法, B 常見地雷, SIM 可簡化, RUF ruff 自己的規則
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "PTH", "RET"]
+select = [
+    "E", "W",    # pycodestyle:排版
+    "F",         # pyflakes:沒用到的變數、未定義的名稱
+    "I",         # isort:匯入排序
+    "N",         # pep8-naming:命名慣例
+    "D",         # pydocstyle:docstring
+    "UP",        # pyupgrade:用新版 Python 的寫法
+    "ANN",       # 函式要標型別
+    "S",         # bandit:安全性
+    "BLE",       # 不要盲目 except Exception
+    "B",         # bugbear:常見地雷(可變預設值、迴圈裡的閉包…)
+    "A",         # 不要用內建名稱當變數
+    "C4",        # 該用 comprehension 的地方
+    "DTZ",       # datetime 沒有時區
+    "EM",        # 例外訊息不要寫在 raise 裡(traceback 才好讀)
+    "ISC",       # 隱式字串連接
+    "ICN",       # 匯入別名慣例(pd、np)
+    "LOG", "G",  # logging 用法
+    "INP",       # 缺少 __init__.py
+    "PIE",       # 多餘的寫法
+    "T20",       # print(正式程式碼不該有)
+    "PT",        # pytest 風格
+    "Q",         # 引號一致
+    "RSE", "RET",# raise / return 的寫法
+    "SLF",       # 不要碰別人的 _私有屬性
+    "SIM",       # 可以簡化的地方
+    "TID",       # 相對匯入
+    "TC",        # 只在型別檢查時需要的匯入
+    "ARG",       # 沒用到的參數
+    "PTH",       # 用 pathlib 取代 os.path
+    "ERA",       # 被註解掉的程式碼(dead code)
+    "PD",        # pandas 的地雷寫法
+    "PGH",       # 不要用空白的 noqa / type: ignore
+    "PL",        # pylint:複雜度、參數過多、魔術數字
+    "TRY",       # 例外處理的反模式
+    "FLY",       # 該用 f-string 的地方
+    "NPY",       # numpy 舊寫法
+    "PERF",      # 效能反模式
+    "FURB",      # 更現代的寫法
+    "RUF",       # ruff 自己的規則
+]
 ignore = [
     "ANN401",  # 允許 Any
-    "E501",    # 過長的行交給 formatter 處理
-    # 這是中文專案,全形字元是正常內容不是打錯;
-    # 而且「～」是證交所資料裡真實出現的字元,不能改成半形
-    "RUF001",
-    "RUF002",
-    "RUF003",
+    "E501",    # 過長的行交給 formatter
+    "D100",    # 不強制每個模組都要 docstring
+    "D104",    # __init__.py 不用 docstring
+    "D203",    # 與 D211 衝突,二選一
+    "D213",    # 與 D212 衝突,二選一
+    "COM812",  # 與 formatter 打架
+    "ISC001",  # 與 formatter 打架
+    # 中文專案,全形字元是正常內容;「～」更是證交所資料裡真實出現的字元
+    "RUF001", "RUF002", "RUF003",
+    # D415 要求第一行以 . ? ! 結尾,不認得中文句號「。」
+    "D415",
+    # .at 是「取單一格」的正確用法,比 .loc 快;PD008 的建議在這裡是錯的
+    "PD008",
 ]
+# 自動修正時也允許這些「Ruff 預設認為要小心」的現代化改寫
+extend-safe-fixes = ["UP006", "UP007", "UP038"]
+
+[tool.ruff.lint.mccabe]
+# 循環複雜度上限。超過就是該拆函式了
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-branches = 12
+max-returns = 6
+max-statements = 40
+max-nested-blocks = 4
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN", "RUF012"]  # 測試不強制標型別,也允許直接寫 dict 當測試資料
+# 測試:可以用 assert、可以有魔術數字、不強制 docstring 與型別
+# 測試:可以用 assert、可以有魔術數字、不強制 docstring 與型別。
+# 測試名稱刻意用中文 —— 讀起來比英文清楚,所以關掉命名與非 ASCII 的檢查。
+"tests/*" = [
+    "S101", "D", "ANN", "PLR2004", "SLF001", "RUF012", "INP001",
+    "N802", "PLC2401", "PLC0415",
+]
+# 命令列工具:print 就是它的輸出方式
+"src/fetch_*.py" = ["T201"]
 
+[tool.ruff.format]
+docstring-code-format = true
+skip-magic-trailing-comma = false
+
+# ─────────────────────────── mypy ───────────────────────────
 [tool.mypy]
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-# 第三方套件沒有型別標註時不報錯
 ignore_missing_imports = true
 
+# ────────────────────────── pytest ──────────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["src"]
+# 命令列進入點只是把其他模組串起來,沒有自己的邏輯可測
+omit = ["src/fetch_*.py", "src/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
+
+# ────────────────────────── vulture ─────────────────────────
+[tool.vulture]
+paths = ["src", "tests"]
+min_confidence = 80

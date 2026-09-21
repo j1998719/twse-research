@@ -22,6 +22,7 @@ from src.twse import (
     parse_punishes,
 )
 
+
 RAW = Path("data/raw")
 OUT = Path("data/out")
 
@@ -39,6 +40,7 @@ def year_chunks(start: date, end: date) -> list[tuple[date, date]]:
 
 
 def write_csv(rows: list[Any], path: Path) -> None:
+    """把 dataclass 清單寫成 CSV。空清單不會產生檔案。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
         return
@@ -51,6 +53,7 @@ def write_csv(rows: list[Any], path: Path) -> None:
 
 
 def main() -> None:
+    """抓取指定期間的注意股與處置股並輸出 CSV。"""
     start = date.fromisoformat(sys.argv[1])
     end = date.fromisoformat(sys.argv[2])
 

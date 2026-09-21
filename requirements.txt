@@ -1,6 +1,11 @@
+coverage==7.16.1
+mdformat==1.0.0
+mdformat-gfm==1.0.0
 mypy==2.3.1
 mypy_extensions==1.1.0
 pandas==3.0.6
 pandas-stubs==3.0.5.260914
 pytest==9.1.1
+pytest-cov==7.1.0
 ruff==0.16.8
+vulture==2.16

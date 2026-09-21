@@ -271,3 +271,79 @@ class TestPrices:
 
         days = weekdays(date(2026, 9, 18), date(2026, 9, 22))  # 五六日一二
         assert days == [date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 22)]
+
+
+class TestCache:
+    """有快取時不該連網 —— 這些測試如果真的打了 API 就會失敗(沒網路設定)。"""
+
+    def test_有快取就直接讀檔(self, tmp_path):
+        import json
+        from datetime import date
+
+        from src.twse import NOTICE_URL, fetch
+
+        start, end = date(2026, 8, 1), date(2026, 8, 15)
+        name = f"notice_{start:%Y%m%d}_{end:%Y%m%d}.json"
+        payload = {
+            "stat": "OK",
+            "data": [[1, "2330", "台積電", "1", "x", "115.08.04", "1", "2"]],
+        }
+        (tmp_path / name).write_text(json.dumps(payload), encoding="utf-8")
+
+        got = fetch(NOTICE_URL, start, end, tmp_path)
+        assert got == payload
+
+    def test_非交易日的空快取回None(self, tmp_path):
+        from datetime import date
+
+        from src.prices import fetch_day
+
+        day = date(2026, 1, 1)
+        (tmp_path / f"mi_index_{day:%Y%m%d}.json").write_text("", encoding="utf-8")
+        assert fetch_day(day, tmp_path) is None
+
+    def test_交易日的快取會被解析(self, tmp_path):
+        import json
+        from datetime import date
+
+        from src.prices import fetch_day, parse_day
+
+        day = date(2026, 9, 18)
+        payload = {
+            "stat": "OK",
+            "tables": [
+                {
+                    "fields": [
+                        "證券代號",
+                        "證券名稱",
+                        "成交股數",
+                        "成交筆數",
+                        "成交金額",
+                        "開盤價",
+                        "最高價",
+                        "最低價",
+                        "收盤價",
+                    ],
+                    "data": [
+                        [
+                            "2330",
+                            "台積電",
+                            "1,000",
+                            "1",
+                            "1",
+                            "100.0",
+                            "101.0",
+                            "99.0",
+                            "100.5",
+                        ]
+                    ],
+                }
+            ],
+        }
+        (tmp_path / f"mi_index_{day:%Y%m%d}.json").write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
+        got = fetch_day(day, tmp_path)
+        assert got is not None
+        bars = parse_day(got, day)
+        assert bars[0].close == 100.5

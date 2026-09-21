@@ -7,22 +7,24 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, SupportsFloat, cast
+from typing import Any
 
 import pandas as pd
+
 
 #: 新制上路日:處置改 5 個營業日、撮合改約 2 分鐘
 NEW_RULES_FROM = date(2026, 8, 10)
 
 
 def as_number(value: Any) -> float | None:
-    """pandas 查值回傳的型別很鬆,轉數字的動作集中在這裡處理。"""
+    """Pandas 查值回傳的型別很鬆,轉數字的動作集中在這裡處理。"""
     if value is None or pd.isna(value):
         return None
-    return float(cast("SupportsFloat", value))
+    return float(value)
 
 
 def trading_days(prices: pd.DataFrame) -> pd.DatetimeIndex:
+    """資料裡出現過的所有交易日,由早到晚。"""
     return pd.DatetimeIndex(sorted(prices["day"].unique()))
 
 
