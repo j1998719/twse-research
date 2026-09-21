@@ -129,8 +129,25 @@ class TestSummarise:
         df = pd.DataFrame({"n0": [10.0, -5.0, 2.0, None]})
         got = summarise(df, "n0")
         assert got["樣本數"] == 3
+        assert got["最小%"] == -5.0
         assert got["中位數%"] == 2.0
+        assert got["最大%"] == 10.0
+        assert got["平均%"] == round((10 - 5 + 2) / 3, 2)
         assert got["勝率%"] == 66.7
+
+    def test_四分位與標準差(self):
+        df = pd.DataFrame({"n0": [1.0, 2.0, 3.0, 4.0, 5.0]})
+        got = summarise(df, "n0")
+        assert got["四分之一%"] == 2.0
+        assert got["四分之三%"] == 4.0
+        assert got["標準差%"] == round(pd.Series([1, 2, 3, 4, 5]).std(), 2)
+
+    def test_平均被極端值拉歪時中位數不受影響(self):
+        # 這正是這類資料的常態:少數暴漲把平均拉高,中位數才看得出多數人的處境
+        df = pd.DataFrame({"n0": [-2.0, -1.0, -1.0, -1.0, 100.0]})
+        got = summarise(df, "n0")
+        assert got["中位數%"] == -1.0
+        assert got["平均%"] == 19.0
 
     def test_全空回空字典(self):
         assert summarise(pd.DataFrame({"n0": [None]}), "n0") == {}
@@ -296,3 +313,39 @@ class TestShiftBounds:
 
     def test_再往前一天就沒有了(self):
         assert shift_trading_day(self.days, pd.Timestamp("2026-01-06"), -3) is None
+
+
+class TestEventRate:
+    def test_頻率計算(self):
+        from src.backtest import event_rate
+
+        # 兩個月內 6 件
+        days = pd.to_datetime(
+            [
+                "2026-01-05",
+                "2026-01-12",
+                "2026-01-20",
+                "2026-02-03",
+                "2026-02-10",
+                "2026-03-04",
+            ]
+        )
+        got = event_rate(pd.DataFrame({"buy_day": days}))
+        assert got["總件數"] == 6
+        assert got["最忙的月份"] == 3
+        assert got["最閒的月份"] == 1
+        assert got["有事件的月份數"] == 3
+
+    def test_空的回空字典(self):
+        from src.backtest import event_rate
+
+        assert event_rate(pd.DataFrame({"buy_day": []})) == {}
+
+    def test_每月平均與涵蓋天數一致(self):
+        from src.backtest import event_rate
+
+        days = pd.to_datetime(["2026-01-01", "2026-02-01", "2026-03-01"])
+        got = event_rate(pd.DataFrame({"buy_day": days}))
+        # 2026-01-01 到 2026-03-01 共 60 天
+        assert got["涵蓋天數"] == 60
+        assert got["每月平均"] == round(3 / (60 / 30.44), 1)

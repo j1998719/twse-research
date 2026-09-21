@@ -192,17 +192,24 @@ def exit_returns(
 
 
 def summarise(returns: pd.DataFrame, column: str) -> dict[str, float]:
-    """一組報酬的重點數字。中位數比平均重要 —— 少數暴漲會把平均拉歪。"""
+    """一組報酬的關鍵統計量。
+
+    中位數比平均重要 —— 這類資料少數幾筆暴漲會把平均拉歪,
+    兩者差很多本身就是訊息(分布偏斜)。四分位距則看得出中間六成落在哪。
+    """
     series = returns[column].dropna()
     if series.empty:
         return {}
     return {
         "樣本數": len(series),
+        "最小%": round(float(series.min()), 2),
+        "四分之一%": round(float(series.quantile(0.25)), 2),
         "中位數%": round(float(series.median()), 2),
         "平均%": round(float(series.mean()), 2),
+        "四分之三%": round(float(series.quantile(0.75)), 2),
+        "最大%": round(float(series.max()), 2),
+        "標準差%": round(float(series.std()), 2),
         "勝率%": round(float((series > 0).mean() * 100), 1),
-        "最差%": round(float(series.min()), 1),
-        "最好%": round(float(series.max()), 1),
     }
 
 
@@ -355,3 +362,30 @@ def pre_release_run(
             }
         )
     return pd.DataFrame(records)
+
+
+#: 一個月平均幾天
+DAYS_PER_MONTH = 30.44
+DAYS_PER_YEAR = 365.25
+
+
+def event_rate(events: pd.DataFrame, column: str = "buy_day") -> dict[str, float]:
+    """事件發生的頻率。
+
+    報酬率再好,一年只出現三次也吃不飽;反過來一個月三十次就要煩惱資金夠不夠。
+    所以頻率跟報酬一樣是決策依據,不是附註。
+    """
+    if events.empty:
+        return {}
+    days = pd.to_datetime(events[column])
+    span = (days.max() - days.min()).days + 1
+    per_month = days.dt.to_period("M").value_counts()
+    return {
+        "總件數": len(days),
+        "涵蓋天數": span,
+        "每月平均": round(len(days) / (span / DAYS_PER_MONTH), 1),
+        "每年平均": round(len(days) / (span / DAYS_PER_YEAR), 1),
+        "最忙的月份": int(per_month.max()),
+        "最閒的月份": int(per_month.min()),
+        "有事件的月份數": len(per_month),
+    }
