@@ -1,0 +1,138 @@
+<title>處置股觀測</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>/* __STYLES__ */</style>
+
+<div class="wrap">
+ <header class="masthead">
+  <div class="eyebrow">臺灣證券交易所 · 上市普通股 · 2020–2026</div>
+  <h1>處置股觀測</h1>
+  <p class="dek">誰正在關禁閉、還剩幾天,以及七年一千一百多次處置告訴我們的事 —— 漲勢在出關<em>前</em>就結束了。</p>
+  <div class="meta">
+   <span>資料期間 <b id="m-range"></b></span>
+   <span>注意股 <b class="num" id="m-notice"></b> 筆</span>
+   <span>處置 <b class="num" id="m-punish"></b> 次</span>
+   <span>交易日 <b class="num" id="m-days"></b></span>
+   <span>可回測 <b class="num" id="m-bt"></b> 筆</span>
+   <span>已排除 <b class="num" id="m-drop"></b> 筆</span>
+   <span>更新 <b id="m-gen"></b></span>
+  </div>
+ </header>
+
+ <section>
+  <h2>現在關著誰</h2>
+  <p class="lede">處置期間不能當沖,盤中改成約每兩分鐘一次集合競價。<strong>第二次處置</strong>的所有買賣都要預收款券 —— 資金不到位就下不了單。</p>
+  <div class="board" id="board"></div>
+  <div class="note">
+   <h3>卡片上的數字是歷史統計,不是預測</h3>
+   <p style="margin:0">「期望值」等是<strong>過去同類事件</strong>(同樣是第一次或第二次處置)的統計結果,不是對這一檔的預測。個股的實際結果可能落在分布的任何位置 —— 歷史最慘那一欄就是提醒:同類事件裡出現過這種幅度。<br>
+   買賣點由出關日往前推算。出關日之後的交易日用<strong>平日推算</strong>,若中間有國定假日會有一兩天誤差。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>漲勢在出關前一日結束</h2>
+  <div class="verdict" id="verdict"></div>
+  <figure>
+   <canvas id="path" width="1840" height="620" aria-label="以出關日對齊的價格路徑"></canvas>
+   <figcaption>以出關日(t=0)為基準的超額累積報酬。價格在處置後半段往上走,<strong>出關前一日見頂,出關當天就回跌</strong>。這也解釋了為什麼「等出關再買」是最差的做法 —— 那是買在最高點的隔天。</figcaption>
+  </figure>
+ </section>
+
+
+ <section>
+  <h2>賺的時候賺多少,賠的時候賠多少</h2>
+  <p class="lede">勝率高不等於賺錢。57% 的勝率配上「小賺大賠」一樣是虧的,所以三個數字要一起看。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th></th><th>出關前進場</th><th>只看第二次處置</th><th>出關後才買</th></tr></thead>
+    <tbody id="t-wl"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>差別完全在勝率,不在賺賠比</h3>
+   <p style="margin:0">三組的賺賠比都在 1.25 到 1.35 之間,<strong>幾乎一樣</strong>。出關前進場之所以賺、出關後之所以賠,差別在<strong>對的次數</strong>(58.7% vs 37.3%),不是因為賺的時候賺比較多。<br>
+   含意:要提高報酬該往<strong>提高勝率</strong>的方向找,而不是找大賺的機會。而停損停利可能沒有幫助 —— 賺賠比已經接近對稱,人為截斷反而可能破壞它。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>出場差一天,結果差一半</h2>
+  <p class="lede">同樣在出關前六個交易日買進,只改變賣出時點。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>賣出時點</th><th>樣本</th><th>超額中位數</th><th>勝率</th><th>p 值</th></tr></thead>
+    <tbody id="t-exit"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>賣在集合競價裡,這是最大的未知數</h3>
+   <p style="margin:0">出關前一日仍在處置期間,盤中是每兩分鐘撮合一次。這裡用的是日收盤價,<strong>實際賣價可能明顯低於收盤</strong>。上表的數字很可能被滑價吃掉一大塊,要用盤中資料才驗得出來。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>七年,七個市況</h2>
+  <p class="lede">會不會只是牛市產物?把資料拉到 2020 分年檢定。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>期間</th><th>樣本</th><th>超額中位數</th><th>勝率</th><th>p 值</th></tr></thead>
+    <tbody id="t-years"></tbody>
+   </table>
+  </div>
+  <div class="note" id="binomial"></div>
+ </section>
+
+ <section>
+  <h2>錢在市場裡的每一天</h2>
+  <p class="lede">事件研究算的是「每次事件平均會怎樣」,假設每次都有錢進場。實際上訊號會重疊,錢不夠就得跳過。下表只取<strong>第二次處置</strong>的訊號。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>本金</th><th>吃到</th><th>總報酬</th><th>年化</th><th>曝險天數</th><th>每曝險日</th><th>同時最多</th></tr></thead>
+    <tbody id="t-cap"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>為什麼不把曝險調整後的報酬年化</h3>
+   <p style="margin:0">年化等於假設你能無限次重複部署,但<strong>事件頻率是固定的</strong>(每月約 <span class="num" id="rate"></span> 次),沒那麼多機會。所以這裡用「每一天曝險賺多少基點」跟大盤比,不做年化 —— 年化會算出四位數的假數字。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>慣犯</h2>
+  <p class="lede">同一檔反覆被處置。<strong>第二次</strong>那一欄越高,代表你進場時越可能遇到全額預收款券 —— 而第二次處置的報酬也明顯較好。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>個股</th><th>總次數</th><th>其中第二次</th><th>第二次佔比</th></tr></thead>
+    <tbody id="t-off"></tbody>
+   </table>
+  </div>
+ </section>
+
+ <section>
+  <h2>每月處置件數</h2>
+  <figure>
+   <canvas id="bars" width="1840" height="400" aria-label="每月處置件數"></canvas>
+   <figcaption>2022 到 2023 的低谷對應空頭市場。2026 年的暴增則是這七年的高峰。黃色是 2026 年 8 月新制上路之後。</figcaption>
+  </figure>
+ </section>
+
+ <div class="note">
+  <h3>還沒解決的四件事</h3>
+  <ol>
+   <li><b>滑價沒驗過。</b>賣出發生在處置期間的集合競價裡,只有日線資料算不出實際成交價。這是目前最大的未知數。</li>
+   <li><b>新制樣本不足。</b>2026 年 8 月起處置從 10 個營業日縮為 5 個,主力被冷凍的時間減半,這個預期性漲勢可能會消失。目前樣本太少,無法判斷。</li>
+   <li><b>第二次處置的資金成本。</b>全額預收款券代表不能融資,資金要 100% 到位,這個成本沒有算進去。</li>
+   <li><b>籌碼面還沒看。</b>出關前那波是法人在買還是散戶追價?三大法人買賣超拿得到,分點進出要過驗證碼、取不到。</li>
+   <li><b>已排除兩類樣本。</b>29 筆的進場日落在公告日當天 —— 公告是盤後發布的,那等於用到未來資訊。另有 173 筆的「出關日」其實還在另一段處置期間裡(兩次處置會重疊),是假出關。排除後結果比含入時<em>更好</em>,所以這兩個瑕疵原本是在稀釋訊號。</li>
+  </ol>
+ </div>
+
+ <footer>
+  資料來源:臺灣證券交易所公開資訊(注意/處置公告、每日收盤行情、除權除息計算結果表)。僅含上市普通股,已排除權證、ETF、特別股。報酬皆已扣除來回 0.585% 的手續費與證交稅,並扣掉加權指數同期漲跌。持有期內除權息、以及開盤即鎖漲停(買不到)的樣本已排除。<br>
+  這是歷史資料的整理與統計,不是投資建議。實際下單前請以券商與證交所公告為準。
+ </footer>
+</div>
+
+<script>/* __SCRIPT__ */</script>

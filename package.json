@@ -1,0 +1,21 @@
+{
+	"name": "twse-research-web",
+	"private": true,
+	"version": "0.1.0",
+	"description": "處置股觀測網頁的渲染層",
+	"engines": {
+		"node": ">=22 <23"
+	},
+	"scripts": {
+		"build": "node --experimental-strip-types web/build.ts",
+		"check": "biome check . && tsc --noEmit",
+		"fix": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.13",
+		"@types/node": "^26.6.2",
+		"esbuild": "^0.25.0",
+		"typescript": "~5.7.0"
+	},
+	"type": "module"
+}

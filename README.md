@@ -31,3 +31,19 @@ make fix     # 自動修正與排版
 - **民國日期要擋西元格式。** `2026-08-04` 若被當成民國年會算出西元 3937 年,而且不會報錯。
 
 以上三點都有對應的測試。
+
+## 網頁
+
+版面與渲染在 `web/`,用 TypeScript 寫,受 Biome 與 `tsc` 把關。
+
+```bash
+make report   # 重算 report.json 並建置成單一 HTML
+```
+
+產出是 `data/out/index.html`,單一自足檔案(CSS 與 JS 都內嵌)——
+artifact 的 CSP 禁止外部腳本,只有 Google Fonts 例外。
+
+`report.json` 的欄位由 Python 寫、TypeScript 讀。兩邊各自定義遲早會漂移,
+所以 `web/src/report.ts` 的 `REQUIRED_KEYS` 是單一來源,
+`tests/test_report_contract.py` 會比對實際輸出;
+`parseReport()` 在執行期再檢查一次,缺欄位直接報錯而不是顯示 undefined。

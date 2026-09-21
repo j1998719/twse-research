@@ -13,3 +13,7 @@ pre-push:
       run: .venv/bin/vulture
     mdformat:
       run: .venv/bin/mdformat --check *.md
+    biome:
+      run: PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH" npx biome check .
+    tsc:
+      run: PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH" npx tsc --noEmit

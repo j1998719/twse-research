@@ -99,6 +99,7 @@ lines-after-imports = 2
 # 命令列工具:print 就是它的輸出方式
 "src/fetch_*.py" = ["T201"]
 "src/run_*.py" = ["T201"]
+"src/build_report.py" = ["T201"]
 
 [tool.ruff.format]
 docstring-code-format = true

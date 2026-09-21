@@ -7,3 +7,6 @@ __pycache__/
 # 抓下來和算出來的資料都可以重跑產生,不進版控
 data/
 .env
+
+# Node
+node_modules/
