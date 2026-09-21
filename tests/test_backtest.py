@@ -447,3 +447,59 @@ class TestLookAhead:
         no_col = self.make(date(2026, 1, 1)).drop(columns=["announced"])
         out = pre_release_run(no_col, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["knowable"]
+
+
+class TestWinLoss:
+    def test_賺賠分開統計(self):
+        from src.backtest import win_loss
+
+        df = pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0, None]})
+        got = win_loss(df, "x")
+        assert got["全部_樣本"] == 4
+        assert got["賺_筆數"] == 2
+        assert got["賠_筆數"] == 2
+        assert got["賺_平均%"] == 15.0
+        assert got["賠_平均%"] == -10.0
+        assert got["勝率%"] == 50.0
+
+    def test_賺賠比(self):
+        from src.backtest import win_loss
+
+        # 賺的平均 15,賠的平均 10,比值 1.5
+        got = win_loss(pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0]}), "x")
+        assert got["賺賠比"] == 1.5
+
+    def test_期望值(self):
+        from src.backtest import win_loss
+
+        # 勝率五成、賺的時候平均 15、賠的時候平均 10,期望值是 2.5
+        got = win_loss(pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0]}), "x")
+        assert got["期望值%"] == 2.5
+
+    def test_勝率高但期望值可以是負的(self):
+        from src.backtest import win_loss
+
+        # 四次裡贏三次,但輸那次賠掉所有獲利 —— 勝率高不等於賺錢
+        got = win_loss(pd.DataFrame({"x": [1.0, 1.0, 1.0, -10.0]}), "x")
+        assert got["勝率%"] == 75.0
+        assert got["期望值%"] < 0
+
+    def test_全賺時沒有賠的欄位(self):
+        from src.backtest import win_loss
+
+        got = win_loss(pd.DataFrame({"x": [1.0, 2.0]}), "x")
+        assert "賠_平均%" not in got
+        assert "賺賠比" not in got
+
+    def test_零不算賺也不算賠(self):
+        from src.backtest import win_loss
+
+        got = win_loss(pd.DataFrame({"x": [0.0, 5.0, -5.0]}), "x")
+        assert got["賺_筆數"] == 1
+        assert got["賠_筆數"] == 1
+        assert got["全部_樣本"] == 3
+
+    def test_空的回空字典(self):
+        from src.backtest import win_loss
+
+        assert win_loss(pd.DataFrame({"x": [None]}), "x") == {}

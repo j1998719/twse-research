@@ -415,3 +415,42 @@ def event_rate(events: pd.DataFrame, column: str = "buy_day") -> dict[str, float
         "最閒的月份": int(per_month.min()),
         "有事件的月份數": len(per_month),
     }
+
+
+def win_loss(returns: pd.DataFrame, column: str) -> dict[str, float]:
+    """把賺的和賠的拆開看。
+
+    勝率高不等於賺錢。57%% 的勝率配上「賺的時候小賺、賠的時候大賠」
+    一樣是虧的,所以賺賠的幅度要跟勝率一起看。
+    最後的期望值就是這三個數字的組合。
+    """
+    series = returns[column].dropna()
+    if series.empty:
+        return {}
+    wins = series[series > 0]
+    losses = series[series < 0]
+    win_rate = len(wins) / len(series)
+    out: dict[str, float] = {
+        "全部_樣本": len(series),
+        "全部_平均%": round(float(series.mean()), 2),
+        "全部_中位數%": round(float(series.median()), 2),
+        "賺_筆數": len(wins),
+        "賠_筆數": len(losses),
+        "勝率%": round(win_rate * 100, 1),
+    }
+    if len(wins):
+        out["賺_平均%"] = round(float(wins.mean()), 2)
+        out["賺_中位數%"] = round(float(wins.median()), 2)
+        out["賺_最大%"] = round(float(wins.max()), 2)
+    if len(losses):
+        out["賠_平均%"] = round(float(losses.mean()), 2)
+        out["賠_中位數%"] = round(float(losses.median()), 2)
+        out["賠_最大%"] = round(float(losses.min()), 2)
+    if len(wins) and len(losses):
+        # 賺賠比:賺的時候的平均 ÷ 賠的時候的平均(取絕對值)
+        out["賺賠比"] = round(float(wins.mean() / abs(losses.mean())), 2)
+        # 期望值 = 勝率 × 平均賺 − 敗率 × 平均賠
+        out["期望值%"] = round(
+            win_rate * float(wins.mean()) + (1 - win_rate) * float(losses.mean()), 2
+        )
+    return out
