@@ -234,3 +234,65 @@ class TestHoldThrough:
         out = hold_through(self.punishes, PRICES, horizons=(0, 1))
         # 出關日後一個交易日是 1/9,收盤 145
         assert out.iloc[0]["g1"] == round((145 / 110 - 1) * 100, 2)
+
+
+class TestPreReleaseRun:
+    punishes = pd.DataFrame(
+        [
+            {
+                "code": 1111,
+                "name": "測試股",
+                "nth": 1,
+                "measure": "第一次處置",
+                "start": date(2026, 1, 1),
+                "end": date(2026, 1, 6),
+            }
+        ]
+    )
+
+    def test_出場是出關前一個交易日(self):
+        from src.backtest import pre_release_run
+
+        # 1/6 結束 -> 1/7 出關,前一個交易日是 1/6
+        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        assert out.iloc[0]["release"] == date(2026, 1, 7)
+        assert out.iloc[0]["sell_day"] == date(2026, 1, 6)
+        assert out.iloc[0]["buy_day"] == date(2026, 1, 2)
+
+    def test_用收盤價進出(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        # 1/2 收盤 115 買,1/6 收盤 125 賣
+        assert out.iloc[0]["buy"] == 115.0
+        assert out.iloc[0]["sell"] == 125.0
+        assert out.iloc[0]["gross"] == round((125 / 115 - 1) * 100, 2)
+
+    def test_淨報酬扣成本(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(self.punishes, PRICES, entry=-2, exit_=-1)
+        assert out.iloc[0]["gross"] - out.iloc[0]["net"] == pytest.approx(
+            ROUND_TRIP_COST_PCT, abs=0.01
+        )
+
+    def test_往前數超出資料範圍就略過(self):
+        from src.backtest import pre_release_run
+
+        assert pre_release_run(self.punishes, PRICES, entry=-99, exit_=-1).empty
+
+
+class TestShiftBounds:
+    days = trading_days(PRICES)
+
+    def test_往前數超出範圍要回None而不是繞到尾端(self):
+        # 沒有下界檢查的話,負索引會回傳 days[-95] 也就是資料尾端的某一天
+        got = shift_trading_day(self.days, pd.Timestamp("2026-01-02"), -99)
+        assert got is None
+
+    def test_剛好數到第一天(self):
+        got = shift_trading_day(self.days, pd.Timestamp("2026-01-06"), -2)
+        assert got == pd.Timestamp("2026-01-01")
+
+    def test_再往前一天就沒有了(self):
+        assert shift_trading_day(self.days, pd.Timestamp("2026-01-06"), -3) is None

@@ -44,10 +44,14 @@ def next_trading_day(
 def shift_trading_day(
     days: pd.DatetimeIndex, day: pd.Timestamp, steps: int
 ) -> pd.Timestamp | None:
-    """從 day 往後數 steps 個交易日。超出範圍回 None。"""
+    """從 day 數 steps 個交易日;steps 為負就往前數。超出範圍回 None。
+
+    下界的檢查不能省 —— Python 的負索引會從尾端取值,
+    少了這一行,「往前數太多天」會安靜地回傳資料最後面的某一天。
+    """
     where = int(days.searchsorted(day))
     target = where + steps
-    if target >= len(days) or where >= len(days):
+    if target < 0 or target >= len(days) or where >= len(days):
         return None
     return days[target]
 
@@ -287,3 +291,67 @@ def _first_trading_day(
     """當天就是交易日就用當天,否則往後找。"""
     later = days[days >= on_or_after]
     return later[0] if len(later) else None
+
+
+#: 出關前的預期性漲勢:進場日與出場日,都是相對於出關日的交易日偏移
+PRE_RELEASE_ENTRY = -6
+PRE_RELEASE_EXIT = -1
+
+
+def pre_release_run(
+    punishes: pd.DataFrame,
+    prices: pd.DataFrame,
+    index: dict[date, float] | None = None,
+    entry: int = PRE_RELEASE_ENTRY,
+    exit_: int = PRE_RELEASE_EXIT,
+) -> pd.DataFrame:
+    """處置後半段買進,出關前一日賣出。
+
+    以出關日為原點(t=0)對齊,而不是以公告日 —— 處置長度有 5 日也有 10 日,
+    用公告日對齊會把兩種混在一起。對齊之後看得出漲勢在 t-1 見頂,
+    出關當天就回跌,所以出場要在出關前一日的收盤。
+    """
+    index = index or {}
+    days = trading_days(prices)
+    panels = build_panels(prices)
+    close_px = panels["close"]
+
+    records: list[dict[str, object]] = []
+    for raw in punishes.to_dict("records"):
+        code = raw["code"]
+        release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
+        if release is None or code not in close_px.columns:
+            continue
+        buy_day = shift_trading_day(days, release, entry)
+        sell_day = shift_trading_day(days, release, exit_)
+        if buy_day is None or sell_day is None:
+            continue
+        if buy_day not in close_px.index or sell_day not in close_px.index:
+            continue
+        buy = as_number(close_px.at[buy_day, code])
+        sell = as_number(close_px.at[sell_day, code])
+        if buy is None or sell is None or buy <= 0:
+            continue
+
+        gross = (sell / buy - 1) * 100
+        net = gross - ROUND_TRIP_COST_PCT
+        market = _index_return(index, buy_day, sell_day)
+        records.append(
+            {
+                "code": code,
+                "name": str(raw["name"]),
+                "nth": int(raw["nth"]),
+                "start": raw["start"],
+                "end": raw["end"],
+                "buy_day": buy_day.date(),
+                "sell_day": sell_day.date(),
+                "release": release.date(),
+                "buy": buy,
+                "sell": sell,
+                "gross": round(gross, 2),
+                "net": round(net, 2),
+                "excess": None if market is None else round(net - market, 2),
+                "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
+            }
+        )
+    return pd.DataFrame(records)
