@@ -361,6 +361,11 @@ def pre_release_run(
         gross = (sell / buy - 1) * 100
         net = gross - ROUND_TRIP_COST_PCT
         market = _index_return(index, buy_day, sell_day)
+        # 處置公告是盤後發布的。在公告日當天(或更早)的收盤買進,
+        # 等於在公告還沒出來時就知道它會被處置 —— 那是用到未來資訊。
+        announced = (
+            pd.Timestamp(str(raw["announced"])) if raw.get("announced") else None
+        )
         records.append(
             {
                 "code": code,
@@ -368,6 +373,9 @@ def pre_release_run(
                 "nth": int(raw["nth"]),
                 "start": raw["start"],
                 "end": raw["end"],
+                "announced": None if announced is None else announced.date(),
+                #: 進場時公告已經發布了嗎。False 代表這筆用到了未來資訊
+                "knowable": announced is None or buy_day > announced,
                 "buy_day": buy_day.date(),
                 "sell_day": sell_day.date(),
                 "release": release.date(),

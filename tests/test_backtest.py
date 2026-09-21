@@ -396,3 +396,54 @@ class TestPriceConvention:
         out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["buy"] == 115.0
         assert out.iloc[0]["sell"] == 125.0
+
+
+class TestLookAhead:
+    """處置公告是盤後發布,公告日當天收盤買進等於用到未來資訊。"""
+
+    def make(self, announced: date):
+        return pd.DataFrame(
+            [
+                {
+                    "code": 1111,
+                    "name": "測試股",
+                    "nth": 1,
+                    "measure": "第一次處置",
+                    "announced": announced,
+                    "start": date(2026, 1, 2),
+                    "end": date(2026, 1, 6),
+                }
+            ]
+        )
+
+    def test_公告早於進場日就是合法的(self):
+        from src.backtest import pre_release_run
+
+        # 出關日 1/7,t-2 = 1/2;公告在 1/1,早於進場
+        out = pre_release_run(
+            self.make(date(2026, 1, 1)), PRICES, timing=Timing(entry=-2, exit=-1)
+        )
+        assert out.iloc[0]["knowable"]
+
+    def test_公告當天買進要標記出來(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(
+            self.make(date(2026, 1, 2)), PRICES, timing=Timing(entry=-2, exit=-1)
+        )
+        assert not out.iloc[0]["knowable"]
+
+    def test_公告晚於進場日更不合法(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(
+            self.make(date(2026, 1, 6)), PRICES, timing=Timing(entry=-2, exit=-1)
+        )
+        assert not out.iloc[0]["knowable"]
+
+    def test_沒有公告欄位時不判定(self):
+        from src.backtest import pre_release_run
+
+        no_col = self.make(date(2026, 1, 1)).drop(columns=["announced"])
+        out = pre_release_run(no_col, PRICES, timing=Timing(entry=-2, exit=-1))
+        assert out.iloc[0]["knowable"]
