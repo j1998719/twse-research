@@ -320,11 +320,24 @@ class Timing:
     exit_price: str = "close"
 
 
+def _locked_days(
+    punishes: pd.DataFrame,
+) -> dict[object, list[tuple[pd.Timestamp, pd.Timestamp]]]:
+    """每一檔的所有處置期間。用來判斷某一天是不是真的自由了。"""
+    spans: dict[object, list[tuple[pd.Timestamp, pd.Timestamp]]] = {}
+    for raw in punishes.to_dict("records"):
+        spans.setdefault(raw["code"], []).append(
+            (pd.Timestamp(str(raw["start"])), pd.Timestamp(str(raw["end"])))
+        )
+    return spans
+
+
 def pre_release_run(
     punishes: pd.DataFrame,
     prices: pd.DataFrame,
     index: dict[date, float] | None = None,
     timing: Timing | None = None,
+    all_punishes: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """處置後半段買進,出關前一日賣出。
 
@@ -335,6 +348,9 @@ def pre_release_run(
     """
     index = index or {}
     timing = timing or Timing()
+    # 兩次處置常常重疊。用全部的處置期間判斷「出關日」那天是不是真的自由了,
+    # 而不是只看這一筆公告自己的結束日。
+    spans = _locked_days(all_punishes if all_punishes is not None else punishes)
     days = trading_days(prices)
     panels = build_panels(prices)
     close_px = panels["close"]
@@ -376,6 +392,11 @@ def pre_release_run(
                 "announced": None if announced is None else announced.date(),
                 #: 進場時公告已經發布了嗎。False 代表這筆用到了未來資訊
                 "knowable": announced is None or buy_day > announced,
+                # 出關日那天是不是真的自由了。兩次處置常常重疊,
+                # False 代表它還在另一段處置裡,是假出關
+                "truly_released": not any(
+                    a <= release <= b for a, b in spans.get(code, [])
+                ),
                 "buy_day": buy_day.date(),
                 "sell_day": sell_day.date(),
                 "release": release.date(),

@@ -503,3 +503,54 @@ class TestWinLoss:
         from src.backtest import win_loss
 
         assert win_loss(pd.DataFrame({"x": [None]}), "x") == {}
+
+
+class TestOverlappingDisposition:
+    """兩次處置會重疊,前一次的「出關日」可能還在後一次的處置期間裡。"""
+
+    first = {
+        "code": 1111,
+        "name": "測試股",
+        "nth": 1,
+        "measure": "第一次處置",
+        "announced": date(2026, 1, 1),
+        "start": date(2026, 1, 1),
+        "end": date(2026, 1, 6),
+    }
+    # 1/7 是前一次的出關日,但這一次的處置把它蓋住了
+    overlapping = {
+        **first,
+        "nth": 2,
+        "measure": "第二次處置",
+        "start": date(2026, 1, 7),
+        "end": date(2026, 1, 9),
+    }
+
+    def test_沒有重疊時是真的出關(self):
+        from src.backtest import pre_release_run
+
+        out = pre_release_run(
+            pd.DataFrame([self.first]), PRICES, timing=Timing(entry=-2, exit=-1)
+        )
+        assert out.iloc[0]["release"] == date(2026, 1, 7)
+        assert out.iloc[0]["truly_released"]
+
+    def test_出關日被另一段處置蓋住就是假出關(self):
+        from src.backtest import pre_release_run
+
+        both = pd.DataFrame([self.first, self.overlapping])
+        out = pre_release_run(both, PRICES, timing=Timing(entry=-2, exit=-1))
+        # 第一筆的出關日 1/7 落在第二筆的 1/7~1/9 裡
+        assert not out.iloc[0]["truly_released"]
+
+    def test_可以另外指定完整的處置清單(self):
+        from src.backtest import pre_release_run
+
+        # 只回測第一筆,但用完整清單判斷有沒有被蓋住
+        out = pre_release_run(
+            pd.DataFrame([self.first]),
+            PRICES,
+            timing=Timing(entry=-2, exit=-1),
+            all_punishes=pd.DataFrame([self.first, self.overlapping]),
+        )
+        assert not out.iloc[0]["truly_released"]
