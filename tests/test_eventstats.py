@@ -8,11 +8,18 @@ import pytest
 
 from src.eventstats import (
     MIN_GROUP,
+    Comparison,
+    Observation,
     adjust,
     compare,
     contemporaneous,
+    demean_by_period,
+    effective_n,
+    equal_weight_buy_and_hold,
     equal_weight_index,
     excess_return,
+    first_on_or_after,
+    median,
     non_overlapping,
 )
 from src.market import ROUND_TRIP_COST_PCT
@@ -187,20 +194,22 @@ class TestCompare:
 
 
 class TestAdjust:
-    def _cmp(self, p: float):
-        return compare("x", [p, p + 1, p + 2, p + 3], [0.0, 0.1, 0.2, 0.3])
+    def _cmp(self, p: float, name: str = "x"):
+        return compare(name, [p, p + 1, p + 2, p + 3], [0.0, 0.1, 0.2, 0.3])
 
     def test_校正後的_p_不會比原始小(self) -> None:
         got = adjust([c for c in (self._cmp(1), self._cmp(2)) if c])
         assert all(adj >= c.pvalue - 1e-12 for c, adj in got)
 
-    def test_多個檢定時會被拉高(self) -> None:
-        # [#14] 的形狀:單獨看顯著,一起校正就不顯著
-        singles = [c for c in [self._cmp(1)] if c]
-        many = [c for c in (self._cmp(i) for i in range(1, 11)) if c]
-        one = adjust(singles)[0][1]
-        batch = max(adj for _, adj in adjust(many))
-        assert batch >= one
+    def test_算出來的是_BH_而不是_Bonferroni(self) -> None:
+        # 只斷言「校正後變大」的話,Bonferroni、Holm、甚至全部回 1.0 的爛
+        # 實作都會過。BH 對 [0.01, 0.02, 0.03] 的答案是 [0.03, 0.03, 0.03];
+        # Bonferroni 會給 [0.03, 0.06, 0.09]
+        got = _adjust_raw([0.01, 0.02, 0.03])
+        assert got == pytest.approx([0.03, 0.03, 0.03])
+
+    def test_BH_不會把最大的那個拉到超過一(self) -> None:
+        assert max(_adjust_raw([0.5, 0.9, 0.95])) <= 1.0
 
     def test_只有一個檢定時校正等於沒做(self) -> None:
         only = [c for c in [self._cmp(1)] if c]
@@ -211,9 +220,12 @@ class TestAdjust:
         assert adjust([]) == []
 
     def test_順序不會被打亂(self) -> None:
-        items = [c for c in (self._cmp(1), self._cmp(5), self._cmp(9)) if c]
+        # 名字要各不相同,否則就算 adjust 把順序打亂也測不出來
+        items = [
+            c for c in (self._cmp(1, "a"), self._cmp(5, "b"), self._cmp(9, "c")) if c
+        ]
         got = adjust(items)
-        assert [c.name for c, _ in got] == [c.name for c in items]
+        assert [c.name for c, _ in got] == ["a", "b", "c"]
 
 
 class TestContemporaneous:
@@ -233,3 +245,138 @@ class TestContemporaneous:
     def test_強相關會給出小的_p(self) -> None:
         _, p = contemporaneous(list(range(10)), list(range(10)))
         assert p < 0.01
+
+
+def _adjust_raw(pvalues: list[float]) -> list[float]:
+    """繞過 Comparison,直接對一串 p 值做校正,方便釘住 BH 的實際數值。"""
+    fake = [
+        Comparison(
+            name=str(i),
+            n_event=5,
+            n_control=5,
+            median_event=0.0,
+            median_control=0.0,
+            win_rate_event=0.0,
+            win_rate_control=0.0,
+            pvalue=p,
+            deduped=False,
+        )
+        for i, p in enumerate(pvalues)
+    ]
+    return [adj for _, adj in adjust(fake)]
+
+
+class TestFirstOnOrAfter:
+    series = {1: 10.0, 3: 30.0, 5: 50.0}
+
+    def test_當天就有值時回當天(self) -> None:
+        assert first_on_or_after(self.series, 3) == (3, 30.0)
+
+    def test_當天沒值時回之後最近的(self) -> None:
+        assert first_on_or_after(self.series, 2) == (3, 30.0)
+
+    def test_全部都在之前回_None_而不是最後一筆(self) -> None:
+        # 回最後一筆會讓出場日落在窗口外面,而且看不出來
+        assert first_on_or_after(self.series, 6) is None
+
+    def test_比最早的還早時回最早的(self) -> None:
+        assert first_on_or_after(self.series, 0) == (1, 10.0)
+
+    def test_空序列回_None(self) -> None:
+        assert first_on_or_after({}, 1) is None
+
+
+class TestEqualWeightBuyAndHold:
+    def test_單一檔就是它自己的報酬(self) -> None:
+        got = equal_weight_buy_and_hold({"a": {1: 10.0, 2: 11.0}}, 1, 2)
+        assert got == pytest.approx(10.0)
+
+    def test_兩檔取平均(self) -> None:
+        closes = {"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0, 2: 13.0}}
+        assert equal_weight_buy_and_hold(closes, 1, 2) == pytest.approx(20.0)
+
+    def test_窗口端點缺價格的股票不算(self) -> None:
+        closes = {"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0}}
+        assert equal_weight_buy_and_hold(closes, 1, 2) == pytest.approx(10.0)
+
+    def test_跟每日再平衡的指數不一樣(self) -> None:
+        # 這是換掉基準演算法的理由:個股是買進持有,基準也必須是
+        closes = {"a": {1: 10.0, 2: 20.0, 3: 10.0}, "b": {1: 10.0, 2: 5.0, 3: 10.0}}
+        bh = equal_weight_buy_and_hold(closes, 1, 3)
+        idx = equal_weight_index(closes)
+        chained = (idx[3] / idx[1] - 1) * 100
+        assert bh == pytest.approx(0.0)
+        assert chained != pytest.approx(bh)
+
+    def test_沒有任何股票兩端都有價格時回_None(self) -> None:
+        assert equal_weight_buy_and_hold({"a": {1: 10.0}}, 1, 2) is None
+
+    def test_起點價格是零時跳過(self) -> None:
+        assert equal_weight_buy_and_hold({"a": {1: 0.0, 2: 10.0}}, 1, 2) is None
+
+
+def _obs(code: str, period: int, excess: float, *, event: bool) -> Observation:
+    return Observation(code=code, period=period, excess=excess, is_event=event)
+
+
+class TestDemeanByPeriod:
+    def test_同一期間的中位數被扣掉(self) -> None:
+        items = [
+            _obs("a", 1, 10.0, event=True),
+            _obs("b", 1, 20.0, event=False),
+            _obs("c", 1, 30.0, event=False),
+        ]
+        got = demean_by_period(items)
+        assert [o.excess for o in got] == pytest.approx([-10.0, 0.0, 10.0])
+
+    def test_不同期間各自扣自己的中位數(self) -> None:
+        items = [
+            _obs("a", 1, 100.0, event=True),
+            _obs("b", 1, 100.0, event=False),
+            _obs("c", 2, 5.0, event=True),
+            _obs("d", 2, 5.0, event=False),
+        ]
+        got = demean_by_period(items)
+        assert [o.excess for o in got] == pytest.approx([0.0, 0.0, 0.0, 0.0])
+
+    def test_期間之間的水位差會被消掉(self) -> None:
+        # 這就是要修的問題:事件組全在好的期間、對照組全在壞的期間
+        items = [
+            _obs("a", 1, 20.0, event=True),
+            _obs("b", 1, 20.0, event=True),
+            _obs("c", 2, -20.0, event=False),
+            _obs("d", 2, -20.0, event=False),
+        ]
+        got = demean_by_period(items)
+        events = [o.excess for o in got if o.is_event]
+        controls = [o.excess for o in got if not o.is_event]
+        assert median(events) == pytest.approx(median(controls))
+
+    def test_其他欄位不會被動到(self) -> None:
+        (got,) = demean_by_period([_obs("a", 7, 1.0, event=True)])
+        assert (got.code, got.period, got.is_event) == ("a", 7, True)
+
+    def test_每期只有一筆時全部歸零(self) -> None:
+        items = [_obs("a", 1, 5.0, event=True), _obs("b", 2, -5.0, event=False)]
+        assert [o.excess for o in demean_by_period(items)] == pytest.approx([0.0, 0.0])
+
+    def test_空輸入回空清單(self) -> None:
+        assert demean_by_period([]) == []
+
+
+class TestEffectiveN:
+    def test_數的是不同期間而不是筆數(self) -> None:
+        items = [
+            _obs("a", 1, 0.0, event=True),
+            _obs("b", 1, 0.0, event=True),
+            _obs("c", 2, 0.0, event=True),
+        ]
+        assert len(items) == 3
+        assert effective_n(items) == 2
+
+    def test_全部同一期間時只有一個(self) -> None:
+        items = [_obs(c, 1, 0.0, event=True) for c in "abcdefghij"]
+        assert effective_n(items) == 1
+
+    def test_空輸入是零(self) -> None:
+        assert effective_n([]) == 0

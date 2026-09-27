@@ -87,14 +87,17 @@ def signals(
             continue
         peak_pct = max(w.big.pct for w in prior if w.big is not None)
         peak_holders = max(w.holders for w in prior if w.holders is not None)
-        drop = peak_pct - big.pct
+        # 先捨入再比:集保的佔比只有兩位小數,未捨入的減法會出現
+        # 46.51 - 44.51 == 1.9999999999999964 這種值,讓畫面顯示 2.00
+        # 卻判定為沒觸發
+        drop = round(peak_pct - big.pct, 2)
         out.append(
             Signal(
                 day=now.day,
                 code=now.code,
                 big_rolled_over=drop >= drop_pp,
                 holders_peaked=holders > peak_holders,
-                drop_from_peak=round(drop, 2),
+                drop_from_peak=drop,
                 big_pct=big.pct,
             )
         )

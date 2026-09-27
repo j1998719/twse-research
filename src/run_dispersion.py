@@ -15,16 +15,19 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.dispersion import DROP_PP, LOOKBACK, Signal, signals
+from src.dispersion import DROP_PP, LOOKBACK, Signal, signals, triggered
 from src.eventstats import (
     Comparison,
+    Observation,
     adjust,
     compare,
-    equal_weight_index,
-    excess_return,
-    median,
+    demean_by_period,
+    effective_n,
+    equal_weight_buy_and_hold,
+    first_on_or_after,
     non_overlapping,
 )
+from src.market import ROUND_TRIP_COST_PCT
 from src.tdcc import Band, Week
 
 
@@ -32,7 +35,11 @@ HISTORY = Path("data/raw/tdcc/history")
 PRICES = Path("data/out/prices.csv")
 #: 集保資料日期到實際可交易之間的時滯。進場不能早於這個
 PUBLISH_LAG = timedelta(days=5)
-#: 事前登記的持有期,單位是週
+#: 事前登記的持有期,單位是週。
+#:
+#: 注意這是「幾個集保週次」而不是固定天數:集保在農曆年那一週沒有資料
+#: (2026-02-13 直接跳到 02-26),所以跨過那個缺口的窗口會多出一週 ——
+#: 13 週的窗口有約三分之一實際是 98 天而不是 91 天。
 HORIZONS = (4, 8, 13)
 #: 事前登記的三個訊號
 SIGNALS = ("big_rolled_over", "holders_peaked", "distributing")
@@ -71,14 +78,6 @@ def load_closes(codes: set[str]) -> dict[str, dict[date, float]]:
     return out
 
 
-def first_on_or_after(
-    series: dict[date, float], day: date
-) -> tuple[date, float] | None:
-    """當天或之後最近一個有價格的交易日。"""
-    later = sorted(d for d in series if d >= day)
-    return (later[0], series[later[0]]) if later else None
-
-
 def main() -> int:
     """跑完 9 個檢定,把結果印出來。"""
     codes = sorted(p.stem for p in HISTORY.glob("*.json"))
@@ -86,16 +85,12 @@ def main() -> int:
         pd.read_csv(PRICES, dtype={"code": str}, usecols=["code"])["code"].unique()
     )
     closes = load_closes(universe)
-    bench = equal_weight_index({c: dict(s) for c, s in closes.items()})
-    print(f"樣本 {len(codes)} 檔,基準用 {len(closes)} 檔等權")
+    print(f"樣本 {len(codes)} 檔,基準用 {len(closes)} 檔逐窗口買進持有等權")
     print(f"回看 {LOOKBACK} 週、回落 {DROP_PP} 個百分點,持有期 {HORIZONS} 週\n")
 
-    # (訊號, 持有期) -> (事件組報酬, 對照組報酬)
-    buckets: dict[tuple[str, int], tuple[list[float], list[float]]] = {
-        (name, h): ([], []) for name in SIGNALS for h in HORIZONS
-    }
-    per_stock: dict[tuple[str, int], list[tuple[str, float]]] = {
-        key: [] for key in buckets
+    # (訊號, 持有期) -> 該組合的所有觀察
+    pooled: dict[tuple[str, int], list[Observation]] = {
+        (name, h): [] for name in SIGNALS for h in HORIZONS
     }
 
     for code in codes:
@@ -105,51 +100,59 @@ def main() -> int:
             continue
         sigs = signals(sorted(load_weeks(code), key=lambda w: w.day))
         for horizon in HORIZONS:
-            rets = _returns(sigs, series, bench, horizon)
+            rets = _returns(sigs, series, closes, horizon)
             for name in SIGNALS:
-                hit = [i for i, s in enumerate(sigs) if getattr(s, name)]
-                miss = [i for i, s in enumerate(sigs) if not getattr(s, name)]
-                event, control = buckets[(name, horizon)]
-                event.extend(_pick(rets, hit, horizon))
-                control.extend(_pick(rets, miss, horizon))
-                # 一致性看的是同一檔內「事件組中位 − 對照組中位」,不是絕對
-                # 超額。絕對超額對每一組都是負的,因為中位數比不過由平均
-                # 驅動的等權基準 —— 20 檔裡只有 6 檔贏基準,中位數落後
-                # 14.3 個百分點。同一檔內相減,基準那一項就抵掉了。
-                theirs = _pick(rets, miss, horizon)
-                mine = _pick(rets, hit, horizon)
-                if mine and theirs:
-                    per_stock[(name, horizon)].append(
-                        (code, median(mine) - median(theirs))
-                    )
+                fired = set(triggered(sigs, name))
+                hit = [i for i, s in enumerate(sigs) if s in fired]
+                miss = [i for i, s in enumerate(sigs) if s not in fired]
+                for group, is_event in ((hit, True), (miss, False)):
+                    for i in non_overlapping(group, horizon):
+                        value = rets[i]
+                        if value is not None:
+                            pooled[(name, horizon)].append(
+                                Observation(
+                                    code=code,
+                                    period=sigs[i].day,
+                                    excess=value,
+                                    is_event=is_event,
+                                )
+                            )
 
-    results = [
-        got
-        for (name, horizon), (event, control) in buckets.items()
-        if (got := compare(f"{name}/{horizon}週", event, control, deduped=True))
-    ]
-    _print_table(results)
-    _print_consistency(per_stock)
+    _report("原始(未去期間化)", pooled, demean=False)
+    _report("去期間化後 —— 這是主要結果", pooled, demean=True)
+    _print_periods(pooled)
     return 0
 
 
-def _pick(rets: list[float | None], positions: list[int], horizon: int) -> list[float]:
-    """挑出互不重疊的那些位置,並丟掉算不出報酬的。"""
-    return [
-        v for i in non_overlapping(positions, horizon) if (v := rets[i]) is not None
-    ]
+def _report(
+    title: str,
+    pooled: dict[tuple[str, int], list[Observation]],
+    *,
+    demean: bool,
+) -> None:
+    """跑一輪 9 個檢定並印表。"""
+    results = []
+    for (name, horizon), items in pooled.items():
+        use = demean_by_period(items) if demean else items
+        event = [o.excess for o in use if o.is_event]
+        control = [o.excess for o in use if not o.is_event]
+        got = compare(f"{name}/{horizon}週", event, control, deduped=True)
+        if got is not None:
+            results.append(got)
+    print(f"\n=== {title} ===")
+    _print_table(results)
 
 
 def _returns(
     sigs: list[Signal],
     series: dict[date, float],
-    bench: dict[date, float],
+    closes: dict[str, dict[date, float]],
     horizon: int,
 ) -> list[float | None]:
     """每個訊號週次持有 horizon 週的超額報酬。算不出來的是 None。"""
     days = [s.day for s in sigs]
     return [
-        _excess(series, bench, day, days[i + horizon])
+        _excess(series, closes, day, days[i + horizon])
         if i + horizon < len(days)
         else None
         for i, day in enumerate(days)
@@ -160,51 +163,61 @@ def _print_table(results: list[Comparison]) -> None:
     """九個檢定的結果表。"""
     print(
         f"{'訊號':20}{'週':>3}{'事件n':>6}{'對照n':>6}"
-        f"{'事件中位':>9}{'對照中位':>9}{'勝率':>7}{'原始p':>8}{'校正p':>8}"
+        f"{'事件中位':>9}{'對照中位':>9}{'事件勝率':>9}{'對照勝率':>9}"
+        f"{'原始p':>8}{'校正p':>8}"
     )
-    for got, adjusted in adjust(results):
+    scored = adjust(results)
+    for got, adjusted in scored:
         name, horizon = got.name.rsplit("/", 1)
         mark = " <-" if adjusted < ALPHA else ""
         print(
             f"{name:20}{horizon.replace('週', ''):>3}{got.n_event:>6}"
             f"{got.n_control:>6}{got.median_event:>+8.1f}%"
-            f"{got.median_control:>+8.1f}%{got.win_rate_event:>6.0%}"
-            f"{got.pvalue:>8.3f}{adjusted:>8.3f}{mark}"
+            f"{got.median_control:>+8.1f}%{got.win_rate_event:>8.0%}"
+            f"{got.win_rate_control:>9.0%}{got.pvalue:>8.3f}{adjusted:>8.3f}{mark}"
         )
-    hits = sum(1 for _, a in adjust(results) if a < ALPHA)
+    hits = sum(1 for _, a in scored if a < ALPHA)
     print(f"\n{len(results)} 個檢定,FDR 校正後顯著:{hits} 個")
-
-
-def _print_consistency(
-    per_stock: dict[tuple[str, int], list[tuple[str, float]]],
-) -> None:
-    """每檔的方向是否一致。全不顯著時,這是判斷還值不值得追的依據([#21])。"""
-    print("\n每檔方向一致性(同一檔內 事件組中位 − 對照組中位 > 0 的檔數):")
-    for key, items in sorted(per_stock.items()):
-        if len(items) < MIN_STOCKS:
-            continue
-        pos = sum(1 for _, v in items if v > 0)
-        print(
-            f"  {key[0]:18} {key[1]:>2}週  {pos}/{len(items)} 檔為正 ({pos / len(items):.0%})"
-        )
 
 
 def _excess(
     series: dict[date, float],
-    bench: dict[date, float],
+    closes: dict[str, dict[date, float]],
     day: date,
     exit_day: date,
 ) -> float | None:
-    """資料日期 + 時滯之後進場,持有到出場週的同一個時滯點。"""
+    """資料日期 + 時滯之後進場,持有到出場週的同一個時滯點。
+
+    基準是同一個窗口內整個宇集的買進持有等權報酬 —— 不是把每日再平衡指數
+    的兩個點相除。個股這一邊是買進持有,基準也必須是,不然 13 週的窗口上
+    會有約 1 個百分點的固定偏差。
+    """
     entry = first_on_or_after(series, day + PUBLISH_LAG)
     out = first_on_or_after(series, exit_day + PUBLISH_LAG)
     if entry is None or out is None:
         return None
-    b_in = first_on_or_after(bench, entry[0])
-    b_out = first_on_or_after(bench, out[0])
-    if b_in is None or b_out is None:
+    bench = equal_weight_buy_and_hold(closes, entry[0], out[0])
+    if bench is None:
         return None
-    return excess_return(entry[1], out[1], b_in[1], b_out[1])
+    stock = (out[1] / entry[1] - 1) * 100 - ROUND_TRIP_COST_PCT
+    return stock - bench
+
+
+def _print_periods(pooled: dict[tuple[str, int], list[Observation]]) -> None:
+    """觀察筆數 vs 不同期間數。
+
+    20 檔共用同一組集保週次,同一週裡的股票一起漲跌,所以同一週的多筆觀察
+    不是多個獨立樣本。表上的 n 會高估資訊量,這一段是為了讓它高估多少看得見。
+    """
+    print("\n事件組的觀察筆數 vs 不同週次(獨立樣本數更接近後者):")
+    for (name, horizon), items in sorted(pooled.items()):
+        events = [o for o in items if o.is_event]
+        if not events:
+            continue
+        print(
+            f"  {name:18} {horizon:>2}週  {len(events):>3} 筆 / "
+            f"{effective_n(events):>2} 個不同週次"
+        )
 
 
 if __name__ == "__main__":

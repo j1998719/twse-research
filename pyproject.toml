@@ -120,8 +120,8 @@ addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 source = ["src"]
-# 命令列進入點只是把其他模組串起來,沒有自己的邏輯可測
-# 命令列進入點只是把其他模組串起來,沒有自己的邏輯可測
+# 命令列進入點只負責讀檔、串模組、印結果。任何算數都要放進被測的模組 ——
+# 排除在外的檔案裡放計算邏輯,等於讓覆蓋率門檻看不到它
 omit = ["src/fetch_*.py", "src/run_*.py", "src/__init__.py"]
 
 [tool.coverage.report]

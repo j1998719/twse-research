@@ -23,7 +23,7 @@ from src.market import ROUND_TRIP_COST_PCT
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from _typeshed import SupportsRichComparison
+    from _typeshed import SupportsAllComparisons, SupportsRichComparison
 
 #: 一組少於這麼多筆就不做檢定,算出來也沒有意義
 MIN_GROUP = 4
@@ -180,3 +180,81 @@ def contemporaneous(
     """
     result = stats.spearmanr(changes, same_period_returns)
     return float(result.statistic), float(result.pvalue)
+
+
+# --- 窗口報酬 ---
+#
+# 這幾個本來寫在 run_dispersion.py 裡。那個檔案被 coverage 排除,所以研究的
+# 核心算數完全沒有測試,而覆蓋率門檻照樣過。搬到這裡才測得到。
+
+
+def first_on_or_after[DayT: SupportsAllComparisons](
+    series: dict[DayT, float], day: DayT
+) -> tuple[DayT, float] | None:
+    """當天或之後最近一個有值的日子。全部都在之前就回 None。"""
+    later = sorted(d for d in series if d >= day)
+    return (later[0], series[later[0]]) if later else None
+
+
+def equal_weight_buy_and_hold[DayT: SupportsAllComparisons](
+    closes: dict[str, dict[DayT, float]], entry: DayT, exit_: DayT
+) -> float | None:
+    """一籃子股票在這段窗口內買進持有的等權報酬,百分比。
+
+    用這個而不是把每日等權指數的兩個點相除:每日再平衡的指數是一個每天
+    調倉的組合,而個股那一邊是買進持有,兩者不可比。實測在 13 週的窗口上
+    差約 1 個百分點,而且方向固定 —— 會讓每一筆超額報酬都偏高。
+
+    只算在窗口兩端都有價格的股票。
+    """
+    rets = [
+        series[exit_] / series[entry] - 1
+        for series in closes.values()
+        if entry in series and exit_ in series and series[entry] > 0
+    ]
+    return sum(rets) / len(rets) * 100 if rets else None
+
+
+@dataclass(frozen=True)
+class Observation:
+    """一筆事件觀察:哪一檔、哪一期進場、報酬多少、是不是事件組。"""
+
+    code: str
+    #: 進場所屬的期間(通常是集保資料週)。去期間化和算有效樣本數都靠它
+    period: object
+    excess: float
+    is_event: bool
+
+
+def demean_by_period(items: Sequence[Observation]) -> list[Observation]:
+    """把每個期間的橫斷面中位數扣掉。
+
+    事件組和對照組各自去重之後,兩組會落在不同的市場期間 —— 實測事件組
+    進場日中位數比對照組早兩個月。那個時間差本身就會產生報酬差異,跟訊號
+    無關:對大盤的超額報酬擋不住這件事,因為隨期間變的是橫斷面的「離散度」
+    (平均與中位數的差),不是指數的水位。
+
+    扣掉之後,比較的才是「同一週裡,有訊號的股票 vs 沒訊號的股票」。
+    """
+    by_period: dict[object, list[float]] = {}
+    for item in items:
+        by_period.setdefault(item.period, []).append(item.excess)
+    centre = {period: median(vals) for period, vals in by_period.items()}
+    return [
+        Observation(
+            code=item.code,
+            period=item.period,
+            excess=item.excess - centre[item.period],
+            is_event=item.is_event,
+        )
+        for item in items
+    ]
+
+
+def effective_n(items: Sequence[Observation]) -> int:
+    """有幾個不同的期間。
+
+    這比觀察筆數更接近獨立樣本數:20 檔共用同一組集保週次,同一週裡的
+    股票一起漲跌,所以 14 筆來自同一週的觀察不是 14 個獨立樣本。
+    """
+    return len({item.period for item in items})

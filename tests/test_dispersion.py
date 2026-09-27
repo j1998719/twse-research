@@ -171,3 +171,32 @@ class TestTriggered:
         # 回空清單的話,打錯字會變成「零個事件」這種看起來合理的結果
         with pytest.raises(ValueError, match="沒有這個訊號"):
             triggered([], "big_rolled_ovr")
+
+
+class TestMissingWeeksAffectLookback:
+    """讀不到的週次被排除後,剩下的當成連續 —— 回看窗會往更早伸。
+
+    這是 _usable 的文件裡寫明的行為,但沒有測試釘住。實際資料上 20 檔一週
+    都沒丟,所以目前成本是零;哪天遇到歷史稀疏的股票就會有差。
+    """
+
+    def test_中途缺一週會把更舊的觀察拉進回看窗(self) -> None:
+        # 第 0 週是 60%,之後都是 50%。正常情況下第 9 週的回看窗是第 1-8 週,
+        # 高點 50、回落 0。但如果第 4 週讀不到,窗口就往前伸到第 0 週,
+        # 高點變成 60、回落 10
+        clean = [_week(0, 60.0, 100_000)] + [
+            _week(i, 50.0, 100_000) for i in range(1, LOOKBACK + 2)
+        ]
+        assert signals(clean)[-1].drop_from_peak == 0.0
+
+        holed = list(clean)
+        holed[4] = Week(day=clean[4].day, code="9999", bands={})
+        # 少一週之後總數剛好是 LOOKBACK+1,只剩一個判斷,而且看得到第 0 週
+        (sig,) = signals(holed)
+        assert sig.drop_from_peak == 10.0
+
+    def test_排除掉的週次不會被當成零(self) -> None:
+        # 當成 0% 的話回落會變成 50 個百分點,憑空造出一個巨大的轉折
+        weeks = [_week(i, 50.0, 100_000) for i in range(LOOKBACK + 2)]
+        weeks[3] = Week(day=weeks[3].day, code="9999", bands={})
+        assert all(s.drop_from_peak == 0.0 for s in signals(weeks))
