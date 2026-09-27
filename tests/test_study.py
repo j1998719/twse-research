@@ -80,9 +80,16 @@ class TestResolveWindow:
             resolve_window(self._event(date(2026, 1, 9)), DAYS, Window(-6, -1)) is None
         )
 
-    def test_knowable_剛好等於進場日是可以的(self) -> None:
-        got = resolve_window(self._event(date(2026, 1, 7)), DAYS, Window(-6, -1))
-        assert got is not None
+    def test_進場日等於_knowable_也要擋(self) -> None:
+        # knowable 是資訊公開那一天,而公告多半盤後發布 ——
+        # 在公告日收盤買進就是偷看未來。實測放寬一天會多收 28 筆事件
+        assert (
+            resolve_window(self._event(date(2026, 1, 7)), DAYS, Window(-6, -1)) is None
+        )
+
+    def test_進場日晚於_knowable_一天就可以(self) -> None:
+        got = resolve_window(self._event(date(2026, 1, 6)), DAYS, Window(-6, -1))
+        assert got == (date(2026, 1, 7), date(2026, 1, 14))
 
     def test_窗口往前超出資料範圍回_None(self) -> None:
         assert (
@@ -172,34 +179,59 @@ def _obs(code: str, period: int, excess: float, *, event: bool) -> Observation:
     return Observation(code=code, period=period, excess=excess, is_event=event)
 
 
+WEEKS = list(range(24))
+
+
 class TestPooled:
+    """重疊要在時間尺標上量,不能用觀察在清單裡的位置。"""
+
     def test_事件組與對照組分開(self) -> None:
         items = [
             _obs("a", 0, 1.0, event=True),
             _obs("a", 10, 2.0, event=False),
         ]
-        events, controls = pooled(items, horizon=1)
+        events, controls = pooled(items, 1, WEEKS)
         assert [o.excess for o in events] == [1.0]
         assert [o.excess for o in controls] == [2.0]
 
     def test_同一檔之內篩掉重疊窗口(self) -> None:
         items = [_obs("a", i, 1.0, event=True) for i in range(6)]
-        events, _ = pooled(items, horizon=3)
-        assert len(events) == 2
+        events, _ = pooled(items, 3, WEEKS)
+        assert [o.period for o in events] == [0, 3]
 
-    def test_不同檔之間不會互相篩掉(self) -> None:
-        # a 和 b 的窗口在時間上重疊,但它們是不同的股票,各自獨立
+    def test_距離用期間量而不是用清單位置(self) -> None:
+        # 兩筆相隔 20 個期間、在清單裡卻是相鄰兩筆。用位置量會砍掉一筆
         items = [
             _obs("a", 0, 1.0, event=True),
-            _obs("b", 0, 1.0, event=True),
-            _obs("c", 0, 1.0, event=True),
+            _obs("a", 20, 2.0, event=True),
         ]
-        events, _ = pooled(items, horizon=13)
+        events, _ = pooled(items, 13, WEEKS)
+        assert len(events) == 2
+
+    def test_期間是整數時排序不會用字典順序(self) -> None:
+        # 字串排序會變成 1, 10, 11, 2, 20, 9 —— 然後保留最擠的兩筆、
+        # 丟掉四筆分得很開的
+        items = [_obs("a", i, 1.0, event=True) for i in (1, 2, 9, 10, 11, 20)]
+        events, _ = pooled(items, 3, WEEKS)
+        assert [o.period for o in events] == [1, 9, 20]
+
+    def test_不同檔之間不會互相篩掉(self) -> None:
+        items = [_obs(c, 0, 1.0, event=True) for c in "abc"]
+        events, _ = pooled(items, 13, WEEKS)
         assert len(events) == 3
+
+    def test_不在時間尺標上的期間直接丟掉(self) -> None:
+        # 留著就得猜它的時間位置,猜錯會安靜地砍掉不該砍的事件
+        items = [
+            _obs("a", 0, 1.0, event=True),
+            _obs("a", 999, 2.0, event=True),
+        ]
+        events, _ = pooled(items, 1, WEEKS)
+        assert [o.period for o in events] == [0]
 
     def test_持有期一時全部保留(self) -> None:
         items = [_obs("a", i, 1.0, event=True) for i in range(5)]
-        events, _ = pooled(items, horizon=1)
+        events, _ = pooled(items, 1, WEEKS)
         assert len(events) == 5
 
 
@@ -213,19 +245,19 @@ class TestCompareGroups:
         return out
 
     def test_原始與去期間化都會算(self) -> None:
-        got = compare_groups("x", self._items(), horizon=1)
+        got = compare_groups("x", self._items(), 1, WEEKS)
         assert got is not None
         assert got.raw.n_event == 12
         assert got.demeaned.n_event == 12
 
     def test_去期間化會拿掉期間的共同水位(self) -> None:
         # 兩組都隨期間上升,去期間化後那個共同趨勢應該消失
-        got = compare_groups("x", self._items(), horizon=1)
+        got = compare_groups("x", self._items(), 1, WEEKS)
         assert got is not None
         assert abs(got.demeaned.median_event) < abs(got.raw.median_event)
 
     def test_回報事件組的獨立期間數(self) -> None:
-        got = compare_groups("x", self._items(), horizon=1)
+        got = compare_groups("x", self._items(), 1, WEEKS)
         assert got is not None
         assert got.periods == 12
         assert got.overstated == pytest.approx(1.0)
@@ -233,13 +265,13 @@ class TestCompareGroups:
     def test_同一期間多筆時高估倍數大於一(self) -> None:
         items = [_obs(c, 0, 1.0 + i, event=True) for i, c in enumerate("abcdef")]
         items += [_obs(c, 0, 0.0, event=False) for c in "ghijkl"]
-        got = compare_groups("x", items, horizon=1)
+        got = compare_groups("x", items, 1, WEEKS)
         assert got is not None
         assert got.periods == 1
         assert got.overstated == pytest.approx(6.0)
 
     def test_樣本太少時回_None(self) -> None:
-        assert compare_groups("x", [_obs("a", 0, 1.0, event=True)], 1) is None
+        assert compare_groups("x", [_obs("a", 0, 1.0, event=True)], 1, WEEKS) is None
 
 
 class TestReport:
@@ -248,7 +280,7 @@ class TestReport:
         for period in range(12):
             out.append(_obs("a", period, 5.0, event=True))
             out.append(_obs("b", period, 1.0, event=False))
-        return compare_groups("試驗", out, horizon=1)
+        return compare_groups("試驗", out, 1, WEEKS)
 
     def test_涵蓋率一定印在最前面(self) -> None:
         cov = Coverage(codes=20, universe=1000, events=12, usable=12, span=None)
@@ -280,3 +312,122 @@ class TestReport:
         finding = self._finding()
         assert finding is not None
         assert "高估" in report([finding], cov)
+
+
+class TestReportPairing:
+    """校正後的 p 值必須按位置配回去,不能按名字。"""
+
+    def _finding(self, *, separated: bool, name: str):
+        """separated=True 是完全分離(顯著),False 是交錯(不顯著)。"""
+        out: list[Observation] = []
+        for period in range(12):
+            if separated:
+                event, control = 50.0, 0.0
+            else:
+                # 交錯:兩組的值輪流大小,等級和幾乎相同
+                event = float(period)
+                control = float(period) + (1 if period % 2 else -1)
+            out.append(_obs("a", period, event, event=True))
+            out.append(_obs("b", period, control, event=False))
+        return compare_groups(name, out, 1, WEEKS)
+
+    @staticmethod
+    def _corrected(line: str) -> str:
+        """表格最後一欄的校正後 p(可能後面跟著標記)。"""
+        return line.removesuffix(" <-").split()[-1]
+
+    def test_兩個同名的檢定不會共用同一個校正_p(self) -> None:
+        # 用名字當 key 的話兩列都印最後那一個的值 —— 那會讓一個真正顯著的
+        # 結果印成不顯著,也就是防多重比較的機制反而消滅了真結果。
+        # 這裡要專門比校正 p 那一欄:兩列在原始 p 欄本來就不同,
+        # 直接比整行的話有 bug 也看不出來
+        strong = self._finding(separated=True, name="同名")
+        weak = self._finding(separated=False, name="同名")
+        assert strong is not None
+        assert weak is not None
+        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
+        rows = [
+            line
+            for line in report([strong, weak], cov).splitlines()
+            if line.startswith("同名")
+        ]
+        assert len(rows) == 2
+        assert self._corrected(rows[0]) != self._corrected(rows[1])
+
+    def test_顯著的那一列保留標記(self) -> None:
+        strong = self._finding(separated=True, name="強")
+        weak = self._finding(separated=False, name="弱")
+        assert strong is not None
+        assert weak is not None
+        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
+        text = report([strong, weak], cov)
+        marked = [line for line in text.splitlines() if line.endswith("<-")]
+        assert len(marked) == 1
+        assert marked[0].startswith("強")
+
+    def test_顯著個數和表上的標記一致(self) -> None:
+        strong = self._finding(separated=True, name="強")
+        weak = self._finding(separated=False, name="弱")
+        assert strong is not None
+        assert weak is not None
+        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
+        text = report([strong, weak], cov)
+        marked = sum(1 for line in text.splitlines() if line.endswith("<-"))
+        assert f"顯著:{marked} 個" in text
+
+
+class TestCoverageOf:
+    """Coverage 要從事件推導,不能讓呼叫端少報宇集躲掉先導警告。"""
+
+    def _events(self, n: int) -> list[Event]:
+        return [
+            Event(f"110{i}", date(2026, 1, 1 + i), date(2026, 1, 1)) for i in range(n)
+        ]
+
+    def test_檔數與期間都從事件算出來(self) -> None:
+        events = self._events(3)
+        cov = Coverage.of(events, events, universe=10)
+        assert cov.codes == 3
+        assert cov.usable == 3
+        assert cov.span == (date(2026, 1, 1), date(2026, 1, 3))
+
+    def test_被擋掉的事件數看得出來(self) -> None:
+        events = self._events(5)
+        cov = Coverage.of(events, events[:2], universe=10)
+        assert (cov.events, cov.usable) == (5, 2)
+
+    def test_同一檔多個事件只算一檔(self) -> None:
+        events = [
+            Event("1101", date(2026, 1, 1), date(2026, 1, 1)),
+            Event("1101", date(2026, 2, 1), date(2026, 1, 1)),
+        ]
+        cov = Coverage.of(events, events, universe=10)
+        assert cov.codes == 1
+
+    def test_沒有可用事件時期間是_None(self) -> None:
+        cov = Coverage.of(self._events(3), [], universe=10)
+        assert cov.span is None
+        assert cov.codes == 0
+
+
+class TestIndexAtOrAfterBounds:
+    def test_錨點早於所有資料回_None_而不是錨到第一天(self) -> None:
+        # 錨到第一天的話,一個比價格資料還早幾年的事件會配到一個
+        # 看起來合理、但完全錯誤時期的窗口
+        early = Event("1101", date(2019, 1, 1), date(2018, 1, 1))
+        assert resolve_window(early, DAYS, Window(0, 1)) is None
+
+    def test_交易日清單是空的回_None(self) -> None:
+        event = Event("1101", date(2026, 1, 15), date(2026, 1, 1))
+        assert resolve_window(event, [], Window(0, 0)) is None
+
+
+class TestOneSampleZeros:
+    def test_全部是零時不會發警告也不會炸(self) -> None:
+        med, p = one_sample([0.0] * 10)
+        assert (med, p) == (0.0, 1.0)
+
+    def test_零值會平分到兩側而不是被丟掉(self) -> None:
+        # scipy 預設的 wilcox 會丟掉零值,讓有效樣本數悄悄變小、p 被推大
+        with_zeros = one_sample([1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        assert with_zeros[1] > 0.05

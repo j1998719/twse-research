@@ -45,11 +45,14 @@ def reproduced() -> dict[str, object]:
         index_series(RAW / "prices"),
         all_punishes=punishes,
     )
-    clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+    # 餵進框架的是**未過濾**的全部事件。原本這裡先用 runs.knowable 篩過,
+    # 等於把舊管線已經清乾淨的資料交給框架去確認它是乾淨的 —— 把
+    # resolve_window 裡的 knowable 檢查整行刪掉,測試照樣全過。
+    usable_only = runs[runs.truly_released & runs.excess.notna()]
     days = sorted(day.date() for day in trading_days(prices))
 
     kept = []
-    for row in clean.to_dict("records"):
+    for row in usable_only.to_dict("records"):
         announced = row["announced"]
         event = Event(
             code=str(row["code"]),
@@ -66,12 +69,15 @@ def reproduced() -> dict[str, object]:
             kept.append((event, window))
 
     values = [float(event.tags["excess"]) for event, _ in kept]
+    expected_blocked = int((~usable_only.knowable).sum())
     median, pvalue = one_sample(values)
     return {
         "n": len(values),
         "median": round(median, 2),
         "win": round(sum(1 for v in values if v > 0) / len(values) * 100, 1),
         "pvalue": pvalue,
+        "blocked": len(usable_only) - len(kept),
+        "expected_blocked": expected_blocked,
         "window_mismatches": [
             event.code
             for event, window in kept
@@ -108,3 +114,14 @@ def test_顯著(reproduced: dict) -> None:
 def test_框架算出的窗口和原本管線一天都不差(reproduced: dict) -> None:
     """只比對統計量不夠 —— 兩組不同的窗口也可能湊出同一個中位數。"""
     assert reproduced["window_mismatches"] == []
+
+
+def test_偷看未來的事件被框架自己擋掉(reproduced: dict) -> None:
+    """這個測試才是驗收 look-ahead 守衛的那一個。
+
+    餵進去的是未過濾的事件,框架必須自己擋掉進場點早於公告的那些 —— 數量
+    要和舊管線的 knowable 旗標算出來的一致。把 resolve_window 裡那行檢查
+    刪掉,這裡就會紅。
+    """
+    assert reproduced["blocked"] > 0
+    assert reproduced["blocked"] == reproduced["expected_blocked"]
