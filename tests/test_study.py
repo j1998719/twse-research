@@ -121,21 +121,28 @@ class TestResolveWindow:
 
 class TestCoverage:
     def test_算出涵蓋比例(self) -> None:
-        cov = Coverage(codes=20, universe=1000, events=100, usable=90, span=None)
+        cov = Coverage(
+            label="x", codes=20, universe=1000, events=100, usable=90, span=None
+        )
         assert cov.ratio == pytest.approx(0.02)
 
     def test_涵蓋率低就是先導測試(self) -> None:
-        cov = Coverage(codes=20, universe=1000, events=100, usable=90, span=None)
+        cov = Coverage(
+            label="x", codes=20, universe=1000, events=100, usable=90, span=None
+        )
         assert cov.pilot is True
         assert "先導測試" in cov.describe()
 
     def test_涵蓋率高就不標先導(self) -> None:
-        cov = Coverage(codes=900, universe=1000, events=100, usable=90, span=None)
+        cov = Coverage(
+            label="x", codes=900, universe=1000, events=100, usable=90, span=None
+        )
         assert cov.pilot is False
         assert "先導測試" not in cov.describe()
 
     def test_剛好在門檻上不算先導(self) -> None:
         cov = Coverage(
+            label="x",
             codes=int(1000 * PILOT_BELOW),
             universe=1000,
             events=1,
@@ -145,15 +152,18 @@ class TestCoverage:
         assert cov.pilot is False
 
     def test_宇集是零時不會除以零(self) -> None:
-        cov = Coverage(codes=0, universe=0, events=0, usable=0, span=None)
+        cov = Coverage(label="x", codes=0, universe=0, events=0, usable=0, span=None)
         assert cov.ratio == 0.0
 
     def test_被擋掉的事件數看得出來(self) -> None:
-        cov = Coverage(codes=5, universe=10, events=100, usable=71, span=None)
+        cov = Coverage(
+            label="x", codes=5, universe=10, events=100, usable=71, span=None
+        )
         assert "71/100" in cov.describe()
 
     def test_期間會印出來(self) -> None:
         cov = Coverage(
+            label="x",
             codes=5,
             universe=10,
             events=1,
@@ -201,6 +211,8 @@ class TestPooled:
         assert [o.excess for o in controls] == [2.0]
 
     def test_同一檔之內篩掉重疊窗口(self) -> None:
+        # 注意這個 fixture 的 period 剛好等於它在清單裡的位置,所以它**不能**
+        # 證明距離是用期間量的。真正在測那件事的是下面兩個
         items = [_obs("a", i, 1.0, event=True) for i in range(6)]
         events, _ = pooled(items, 3, WEEKS)
         assert [o.period for o in events] == [0, 3]
@@ -289,35 +301,41 @@ class TestReport:
         return compare_groups("試驗", out, 1, WEEKS)
 
     def test_涵蓋率一定印在最前面(self) -> None:
-        cov = Coverage(codes=20, universe=1000, events=12, usable=12, span=None)
+        cov = Coverage(
+            label="x", codes=20, universe=1000, events=12, usable=12, span=None
+        )
         finding = self._finding()
         assert finding is not None
-        text = report([finding], cov)
-        assert text.startswith("20/1000")
+        text = report([finding], [cov])
+        assert text.startswith("x:20/1000")
 
     def test_先導測試的警告會出現(self) -> None:
-        cov = Coverage(codes=20, universe=1000, events=12, usable=12, span=None)
+        cov = Coverage(
+            label="x", codes=20, universe=1000, events=12, usable=12, span=None
+        )
         finding = self._finding()
         assert finding is not None
-        assert "先導測試" in report([finding], cov)
+        assert "先導測試" in report([finding], [cov])
 
     def test_校正後的_p_一定出現(self) -> None:
-        cov = Coverage(codes=900, universe=1000, events=12, usable=12, span=None)
+        cov = Coverage(
+            label="x", codes=900, universe=1000, events=12, usable=12, span=None
+        )
         finding = self._finding()
         assert finding is not None
-        text = report([finding], cov)
+        text = report([finding], [cov])
         assert "校正p" in text
         assert "BH 校正後顯著" in text
 
     def test_沒有檢定時也不會炸(self) -> None:
-        cov = Coverage(codes=0, universe=10, events=0, usable=0, span=None)
-        assert "沒有可用的檢定" in report([], cov)
+        cov = Coverage(label="x", codes=0, universe=10, events=0, usable=0, span=None)
+        assert "沒有可用的檢定" in report([], [cov])
 
     def test_高估倍數會印出來(self) -> None:
-        cov = Coverage(codes=2, universe=2, events=12, usable=12, span=None)
+        cov = Coverage(label="x", codes=2, universe=2, events=12, usable=12, span=None)
         finding = self._finding()
         assert finding is not None
-        assert "高估" in report([finding], cov)
+        assert "高估" in report([finding], [cov])
 
 
 class TestReportPairing:
@@ -339,8 +357,12 @@ class TestReportPairing:
 
     @staticmethod
     def _corrected(line: str) -> str:
-        """表格最後一欄的校正後 p(可能後面跟著標記)。"""
-        return line.removesuffix(" <-").split()[-1]
+        """校正後 p 那一欄。
+
+        不能取最後一個 token —— 那是同期 r。之前取錯欄位,結果這個測試在
+        斷言「兩個 Spearman r 不相等」,把它要防的 bug 植回去照樣會過。
+        """
+        return line.removesuffix(" <-").split()[-2]
 
     def test_兩個同名的檢定不會共用同一個校正_p(self) -> None:
         # 用名字當 key 的話兩列都印最後那一個的值 —— 那會讓一個真正顯著的
@@ -351,10 +373,10 @@ class TestReportPairing:
         weak = self._finding(separated=False, name="同名")
         assert strong is not None
         assert weak is not None
-        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
         rows = [
             line
-            for line in report([strong, weak], cov).splitlines()
+            for line in report([strong, weak], [cov]).splitlines()
             if line.startswith("同名")
         ]
         assert len(rows) == 2
@@ -365,8 +387,8 @@ class TestReportPairing:
         weak = self._finding(separated=False, name="弱")
         assert strong is not None
         assert weak is not None
-        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
-        text = report([strong, weak], cov)
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
+        text = report([strong, weak], [cov])
         marked = [line for line in text.splitlines() if line.endswith("<-")]
         assert len(marked) == 1
         assert marked[0].startswith("強")
@@ -376,8 +398,8 @@ class TestReportPairing:
         weak = self._finding(separated=False, name="弱")
         assert strong is not None
         assert weak is not None
-        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
-        text = report([strong, weak], cov)
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
+        text = report([strong, weak], [cov])
         marked = sum(1 for line in text.splitlines() if line.endswith("<-"))
         assert f"顯著:{marked} 個" in text
 
@@ -392,14 +414,14 @@ class TestCoverageOf:
 
     def test_檔數與期間都從事件算出來(self) -> None:
         events = self._events(3)
-        cov = Coverage.of(events, events, universe=10)
+        cov = Coverage.of("x", events, events, universe=10)
         assert cov.codes == 3
         assert cov.usable == 3
         assert cov.span == (date(2026, 1, 1), date(2026, 1, 3))
 
     def test_被擋掉的事件數看得出來(self) -> None:
         events = self._events(5)
-        cov = Coverage.of(events, events[:2], universe=10)
+        cov = Coverage.of("x", events, events[:2], universe=10)
         assert (cov.events, cov.usable) == (5, 2)
 
     def test_同一檔多個事件只算一檔(self) -> None:
@@ -407,11 +429,11 @@ class TestCoverageOf:
             Event("1101", date(2026, 1, 1), date(2026, 1, 1)),
             Event("1101", date(2026, 2, 1), date(2026, 1, 1)),
         ]
-        cov = Coverage.of(events, events, universe=10)
+        cov = Coverage.of("x", events, events, universe=10)
         assert cov.codes == 1
 
     def test_沒有可用事件時期間是_None(self) -> None:
-        cov = Coverage.of(self._events(3), [], universe=10)
+        cov = Coverage.of("x", self._events(3), [], universe=10)
         assert cov.span is None
         assert cov.codes == 0
 
@@ -450,6 +472,7 @@ def _spec(*groupings: Grouping) -> Spec:
     return Spec(
         name="試驗",
         window_of=anchor_window(DAYS, Window(0, 1)),
+        horizon=1,
         groupings=groupings,
         universe=10,
     )
@@ -467,7 +490,7 @@ class TestRunStudy:
         ]
 
     def test_跑出結果與涵蓋率(self) -> None:
-        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        spec = _spec(Grouping("漲組", lambda e: e.code == "up"))
         findings, cov = run_study(spec, self._events(), CLOSES, periods=DAYS)
         assert len(findings) == 1
         assert cov.universe == 10
@@ -475,8 +498,8 @@ class TestRunStudy:
 
     def test_每個_grouping_各一個_finding(self) -> None:
         spec = _spec(
-            Grouping("漲組", 1, lambda e: e.code == "up"),
-            Grouping("跌組", 1, lambda e: e.code == "down"),
+            Grouping("漲組", lambda e: e.code == "up"),
+            Grouping("跌組", lambda e: e.code == "down"),
         )
         findings, _ = run_study(spec, self._events(), CLOSES, DAYS)
         assert [f.name for f in findings] == ["漲組", "跌組"]
@@ -488,9 +511,12 @@ class TestRunStudy:
                 return None
             return event.code == "up"
 
-        spec = _spec(Grouping("漲對跌", 1, only_up_vs_down))
+        spec = _spec(Grouping("漲對跌", only_up_vs_down))
         findings, _ = run_study(spec, self._events(), CLOSES, DAYS)
-        assert findings[0].raw.n_event + findings[0].raw.n_control <= len(DAYS) * 2
+        # 兩檔 × 8 個可用事件。回 None 的 flat 一筆都不該進來 ——
+        # 寫成「不超過 20」的話,忽略 None 而全部收進來(24 筆)也會過
+        got = findings[0].raw
+        assert got.n_event + got.n_control == 16
 
     def test_窗口解不出來的事件不會進樣本(self) -> None:
         # knowable 設在最後一天,所有窗口的進場都早於它
@@ -499,7 +525,7 @@ class TestRunStudy:
             for code in ("up", "down")
             for day in DAYS[1:-1]
         ]
-        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        spec = _spec(Grouping("漲組", lambda e: e.code == "up"))
         findings, cov = run_study(spec, blocked, CLOSES, DAYS)
         assert findings == []
         assert cov.usable == 0
@@ -507,18 +533,18 @@ class TestRunStudy:
 
     def test_沒有價格的股票不會進樣本(self) -> None:
         ghost = [Event("沒這檔", day, DAYS[0]) for day in DAYS[1:-1]]
-        spec = _spec(Grouping("x", 1, lambda _: True))
+        spec = _spec(Grouping("x", lambda _: True))
         _, cov = run_study(spec, ghost, CLOSES, DAYS)
         assert cov.usable == 0
 
     def test_涵蓋率會標出先導測試(self) -> None:
-        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        spec = _spec(Grouping("漲組", lambda e: e.code == "up"))
         _, cov = run_study(spec, self._events(), CLOSES, DAYS)
         # 3 檔 / 宇集 10 檔 = 30%
         assert cov.pilot is True
 
     def test_沒有事件時不會炸(self) -> None:
-        spec = _spec(Grouping("x", 1, lambda _: True))
+        spec = _spec(Grouping("x", lambda _: True))
         findings, cov = run_study(spec, [], CLOSES, DAYS)
         assert findings == []
         assert cov.span is None
@@ -527,15 +553,30 @@ class TestRunStudy:
 class TestSpecIsFrozen:
     """檢定清單是 tuple —— 事後補一個檢定必須是看得見的改動。"""
 
-    def test_groupings_不能就地追加(self) -> None:
-        spec = _spec(Grouping("x", 1, lambda _: True))
-        with pytest.raises(AttributeError):
-            spec.groupings.append(  # type: ignore[attr-defined]
-                Grouping("事後補的", 1, lambda _: True)
-            )
+    def test_事前登記的檢定數對不上時報表會講出來(self) -> None:
+        # tuple 沒有 .append 是 CPython 的事實,測它沒有意義。真正要防的是
+        # 看到結果之後砍掉一個持有期讓倖存者顯著 —— 家族變小、校正變鬆
+        items: list[Observation] = []
+        for period in range(12):
+            items.append(_obs("a", period, 5.0, event=True))
+            items.append(_obs("b", period, 1.0, event=False))
+        found = compare_groups("只跑了一個", items, 1, WEEKS)
+        assert found is not None
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
+        assert "事前登記了 3 個檢定" in report([found], [cov], declared=3)
+
+    def test_數量對得上時不會有那個警告(self) -> None:
+        items: list[Observation] = []
+        for period in range(12):
+            items.append(_obs("a", period, 5.0, event=True))
+            items.append(_obs("b", period, 1.0, event=False))
+        found = compare_groups("x", items, 1, WEEKS)
+        assert found is not None
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
+        assert "事前登記了" not in report([found], [cov], declared=1)
 
     def test_spec_本身不能改(self) -> None:
-        spec = _spec(Grouping("x", 1, lambda _: True))
+        spec = _spec(Grouping("x", lambda _: True))
         with pytest.raises(AttributeError):
             spec.universe = 1  # type: ignore[misc]
 
@@ -562,8 +603,8 @@ class TestMirrorsPrice:
             items.append(_obs("b", period, -10.0, event=False))
         found = compare_groups("鏡像", items, 1, WEEKS)
         assert found is not None
-        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
-        assert "價格的鏡像" in report([found], cov)
+        cov = Coverage(label="x", codes=2, universe=2, events=24, usable=24, span=None)
+        assert "價格的鏡像" in report([found], [cov])
 
     def test_同期沒關係時不標鏡像(self) -> None:
         items: list[Observation] = []
@@ -655,7 +696,8 @@ class TestRunStudyGuardCannotBeBypassed:
         spec = Spec(
             name="x",
             window_of=reckless,
-            groupings=(Grouping("x", 1, lambda _: True),),
+            horizon=1,
+            groupings=(Grouping("x", lambda _: True),),
             universe=1,
         )
         _, cov = run_study(spec, events, CLOSES, DAYS)
@@ -671,7 +713,8 @@ class TestRunStudyGuardCannotBeBypassed:
         spec = Spec(
             name="x",
             window_of=fine,
-            groupings=(Grouping("x", 1, lambda _: True),),
+            horizon=1,
+            groupings=(Grouping("x", lambda _: True),),
             universe=1,
         )
         _, cov = run_study(spec, events, CLOSES, DAYS)

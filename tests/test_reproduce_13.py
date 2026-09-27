@@ -147,7 +147,11 @@ def via_adapter() -> dict[str, int]:
     return {
         "all": len(events),
         "knowable": len(passed),
-        "clean": sum(1 for e in passed if e.tags["truly_released"]),
+        # excess 算不出來的也要排除,才和 expected 的條件一致 ——
+        # 今天兩者剛好重合,但那是巧合而不是保證
+        "clean": sum(
+            1 for e in passed if e.tags["truly_released"] and e.tags["has_excess"]
+        ),
         "expected": int(
             (runs.knowable & runs.truly_released & runs.excess.notna()).sum()
         ),

@@ -71,25 +71,25 @@ def main() -> int:
     print(f"回看 {LOOKBACK} 週、回落 {DROP_PP} 個百分點,持有期 {HORIZONS} 週")
 
     findings = []
-    coverage = None
+    coverages = []
     for horizon in HORIZONS:
         spec = Spec(
             name=f"出貨訊號/{horizon}週",
             window_of=period_window(periods, horizon),  # type: ignore[arg-type]
+            horizon=horizon,
             groupings=tuple(
-                Grouping(f"{name}/{horizon}週", horizon, fired(name))  # type: ignore[arg-type]
+                Grouping(f"{name}/{horizon}週", fired(name))  # type: ignore[arg-type]
                 for name in SIGNALS
             ),
             universe=len(closes),
         )
         got, coverage = run_study(spec, events, closes, periods)
         findings.extend(got)
+        coverages.append(coverage)
 
-    if coverage is None:
-        print("沒有可用的持有期")
-        return 1
     print()
-    print(report(findings, coverage))
+    # declared:事前登記的檢定數。少掉的要在輸出上交代
+    print(report(findings, coverages, declared=len(HORIZONS) * len(SIGNALS)))
     return 0
 
 

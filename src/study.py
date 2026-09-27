@@ -148,6 +148,8 @@ class Coverage:
     讓先導警告消失,而那個警告存在的意義就是不讓人把部分樣本當全市場讀。
     """
 
+    #: 這份涵蓋率屬於哪一個檢定或持有期。多個 Spec 的家族一定要分開報
+    label: str
     codes: int
     universe: int
     events: int
@@ -158,6 +160,7 @@ class Coverage:
     @classmethod
     def of(
         cls,
+        label: str,
         events: Sequence[Event],
         usable: Sequence[Event],
         universe: int,
@@ -169,6 +172,7 @@ class Coverage:
             else None
         )
         return cls(
+            label=label,
             codes=len({e.code for e in usable}),
             universe=universe,
             events=len(events),
@@ -190,33 +194,12 @@ class Coverage:
         """一行摘要。先導測試要講出來。"""
         span = f"{self.span[0]}–{self.span[1]}" if self.span else "沒有事件"
         head = (
-            f"{self.codes}/{self.universe} 檔({self.ratio:.1%})、"
+            f"{self.label}:{self.codes}/{self.universe} 檔({self.ratio:.1%})、"
             f"{self.usable}/{self.events} 個可用事件、{span}"
         )
         if self.pilot:
             return f"{head}\n⚠️ 涵蓋率低於 {PILOT_BELOW:.0%},這是先導測試,不是全市場研究"
         return head
-
-
-def window_return(
-    event: Event,
-    days: Sequence[date],
-    window: Window,
-    closes: dict[str, dict[date, float]],
-) -> float | None:
-    """一個事件在這個窗口的超額報酬。窗口解不出來就回 None。
-
-    這是框架裡唯一算報酬的入口,而它一定先過 `resolve_window` —— 所以
-    look-ahead 的檢查繞不過去。`eventstats.window_excess` 仍然是公開的
-    (測試和舊的 runner 要用),但新研究應該走這裡。
-    """
-    resolved = resolve_window(event, days, window)
-    if resolved is None:
-        return None
-    series = closes.get(event.code)
-    if series is None:
-        return None
-    return window_excess(series, closes, *resolved)
 
 
 def one_sample(values: Sequence[float]) -> tuple[float, float]:
@@ -358,14 +341,28 @@ def compare_groups(
     )
 
 
-def report(findings: Sequence[Finding], coverage: Coverage) -> str:
+def report(
+    findings: Sequence[Finding],
+    coverages: Sequence[Coverage],
+    declared: int | None = None,
+) -> str:
     """結果表。校正一定做,涵蓋率一定印。
 
+    coverages 是一串而不是一個:一個家族裡每個持有期的可用事件數不一樣
+    (長持有期會被資料右緣截掉更多),只印一份會讓讀者以為整組研究都用了
+    最少的那個樣本。
+
+    declared 是**事前登記的檢定數**。跑出來的數量不一致就在輸出上講出來 ——
+    看到結果之後砍掉一個持有期讓倖存者顯著,家族變小、校正變鬆,那是看不見
+    的作弊。對不上不代表一定有問題(樣本太小的檢定會被跳過),但它必須是
+    看得見的。
+
     校正後的 p 值按**位置**配回去,不是按名字 —— 用名字當 key 的話,兩個
-    同名的檢定會collapse 成一個,兩列都印最後那一個的值。那會讓一個真正
+    同名的檢定會 collapse 成一個,兩列都印最後那一個的值。那會讓一個真正
     顯著的結果印成不顯著,也就是防多重比較的機制反而消滅了真結果。
     """
-    lines = [coverage.describe(), ""]
+    lines = [c.describe() for c in coverages]
+    lines.append("")
     if not findings:
         return "\n".join([*lines, "沒有可用的檢定"])
     scored = adjust([f.demeaned for f in findings])
@@ -386,6 +383,11 @@ def report(findings: Sequence[Finding], coverage: Coverage) -> str:
         )
     lines.append("")
     lines.append(f"{len(findings)} 個檢定,BH 校正後顯著:{hits} 個")
+    if declared is not None and declared != len(findings):
+        lines.append(
+            f"⚠️ 事前登記了 {declared} 個檢定,實際跑出 {len(findings)} 個 —— "
+            "少掉的要交代清楚"
+        )
     lines.append("註:去期間化後中位數與勝率依構造靠近 0 與 50%,只看 p 值")
     mirrors = [f.name for f in findings if f.mirrors_price]
     if mirrors:
@@ -395,19 +397,19 @@ def report(findings: Sequence[Finding], coverage: Coverage) -> str:
     return "\n".join(lines)
 
 
-# --- 單一入口 ---
-
-
 @dataclass(frozen=True)
 class Grouping:
     """一個檢定:怎麼把事件分成兩組,以及持有多久。
 
     `is_event` 收一個 Event 回傳 True/False/None。None 代表這筆不參加這個
     檢定(例如按處置次數分組時,第三次以上的不歸任何一邊)。
+
+    持有期在 Spec 上,不在這裡 —— 同一個 Spec 的窗口只有一種長度。讓每個
+    分組各自帶一個 horizon,就寫得出「窗口 13 週、去重卻按 1 週算」這種把
+    重疊窗口當成獨立樣本的組合,而那正是要防的錯之一。
     """
 
     name: str
-    horizon: int
     is_event: Callable[[Event], bool | None]
 
 
@@ -434,6 +436,8 @@ class Spec:
 
     name: str
     window_of: Callable[[Event], tuple[date, date] | None]
+    #: 窗口跨幾個期間。去重要用它,所以它必須和 window_of 描述同一個長度
+    horizon: int
     groupings: tuple[Grouping, ...]
     #: 宇集有幾檔。涵蓋率要靠它算,所以必須由外面明確給
     universe: int
@@ -494,7 +498,7 @@ def run_study(
     for event in events:
         span = spec.window_of(event)
         # 守衛在這裡,不在解析器裡 —— 換一個解析器也繞不過去
-        if span is None or span[0] <= event.knowable:
+        if span is None or span[0] <= event.knowable or span[1] < span[0]:
             continue
         series = closes.get(event.code)
         if series is None:
@@ -516,7 +520,7 @@ def run_study(
             for event, value in scored
             if (side := grouping.is_event(event)) is not None
         ]
-        found = compare_groups(grouping.name, observations, grouping.horizon, periods)
+        found = compare_groups(grouping.name, observations, spec.horizon, periods)
         if found is not None:
             findings.append(found)
-    return findings, Coverage.of(events, usable, spec.universe)
+    return findings, Coverage.of(spec.name, events, usable, spec.universe)
