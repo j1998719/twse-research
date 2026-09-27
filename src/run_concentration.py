@@ -15,10 +15,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.eventdata import available_codes, load_closes, load_weeks
 from src.events.dispersion import events as dispersion_events
 from src.study import Event, Grouping, Spec, period_window, report, run_study
 from src.tdcc import Week, gini, herfindahl
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 #: 事前登記的持有期(幾個集保週次)。跑完不補測
@@ -31,8 +37,9 @@ def _value(name: str, week: Week) -> float | None:
     return herfindahl(week) if name == "HHI" else gini(week)
 
 
-def _tags(before: Week | None, week: Week) -> dict[str, object]:
+def _tags(prior: Sequence[Week], week: Week) -> dict[str, object]:
     """每個指標的「這一週」和「前一週」都掛上去,分組時要比大小。"""
+    before = prior[-1] if prior else None
     tags: dict[str, object] = {}
     for name in METRICS:
         tags[name] = _value(name, week)

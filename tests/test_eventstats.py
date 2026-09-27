@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import itertools
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 
@@ -15,13 +15,9 @@ from src.eventstats import (
     compare,
     contemporaneous,
     demean_by_period,
-    direction_split,
     effective_n,
     equal_weight_buy_and_hold,
-    equal_weight_index,
-    excess_return,
     first_on_or_after,
-    horizon_returns,
     median,
     non_overlapping,
     window_excess,
@@ -32,79 +28,6 @@ from src.market import ROUND_TRIP_COST_PCT
 def D(n: int) -> date:
     """第 n 天。用真的 date,因為 horizon_returns 要跟 timedelta 相加。"""
     return date(2026, 1, n)
-
-
-class TestEqualWeightIndex:
-    def test_起點是一百(self) -> None:
-        idx = equal_weight_index({"a": {1: 10.0, 2: 11.0}})
-        assert idx[1] == 100.0
-
-    def test_單一檔就是它自己的報酬(self) -> None:
-        idx = equal_weight_index({"a": {1: 10.0, 2: 11.0}})
-        assert idx[2] == pytest.approx(110.0)
-
-    def test_兩檔取平均而不是加總(self) -> None:
-        # +10% 和 +30% 的等權平均是 +20%
-        idx = equal_weight_index({"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0, 2: 13.0}})
-        assert idx[2] == pytest.approx(120.0)
-
-    def test_等權不被高價股主導(self) -> None:
-        # b 的股價是 a 的一百倍,但兩檔漲跌幅一樣就該是同一個結果
-        cheap = equal_weight_index({"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0, 2: 11.0}})
-        pricey = equal_weight_index(
-            {"a": {1: 10.0, 2: 11.0}, "b": {1: 1000.0, 2: 1100.0}}
-        )
-        assert cheap[2] == pytest.approx(pricey[2])
-
-    def test_那天沒價格的股票不算成零報酬(self) -> None:
-        # b 第 2 天停牌。指數該只反映 a 的 +10%,不是 (10%+(-100%))/2
-        idx = equal_weight_index({"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0}})
-        assert idx[2] == pytest.approx(110.0)
-
-    def test_中途才上市的股票不會拉低指數(self) -> None:
-        idx = equal_weight_index({"a": {1: 10.0, 2: 11.0}, "b": {2: 50.0}})
-        assert idx[2] == pytest.approx(110.0)
-
-    def test_全部都沒報酬那天指數不動(self) -> None:
-        idx = equal_weight_index({"a": {1: 10.0}, "b": {2: 50.0}})
-        assert idx[2] == pytest.approx(100.0)
-
-    def test_前一天價格是零時跳過而不是除以零(self) -> None:
-        idx = equal_weight_index({"a": {1: 0.0, 2: 11.0}})
-        assert idx[2] == pytest.approx(100.0)
-
-    def test_空輸入回空字典(self) -> None:
-        assert equal_weight_index({}) == {}
-
-
-class TestExcessReturn:
-    def test_跟基準一樣時超額只剩成本(self) -> None:
-        got = excess_return(100, 110, 100, 110)
-        assert got == pytest.approx(-ROUND_TRIP_COST_PCT)
-
-    def test_贏基準十個百分點(self) -> None:
-        got = excess_return(100, 120, 100, 110, costs=False)
-        assert got == pytest.approx(10.0)
-
-    def test_輸基準是負的(self) -> None:
-        got = excess_return(100, 105, 100, 110, costs=False)
-        assert got == pytest.approx(-5.0)
-
-    def test_成本只扣個股那一邊(self) -> None:
-        # 基準不是要付手續費的部位,扣兩次會低估超額報酬
-        with_costs = excess_return(100, 120, 100, 110)
-        without = excess_return(100, 120, 100, 110, costs=False)
-        assert without - with_costs == pytest.approx(ROUND_TRIP_COST_PCT)
-
-    def test_大盤下跌時個股小跌也可能是正超額(self) -> None:
-        got = excess_return(100, 95, 100, 80, costs=False)
-        assert got == pytest.approx(15.0)
-
-    def test_進場價非正要出錯而不是回一個數字(self) -> None:
-        with pytest.raises(ValueError, match="大於零"):
-            excess_return(0, 110, 100, 110)
-        with pytest.raises(ValueError, match="大於零"):
-            excess_return(100, 110, 0, 110)
 
 
 class TestNonOverlapping:
@@ -308,14 +231,23 @@ class TestEqualWeightBuyAndHold:
         closes = {"a": {1: 10.0, 2: 11.0}, "b": {1: 10.0}}
         assert equal_weight_buy_and_hold(closes, 1, 2) == pytest.approx(10.0)
 
-    def test_跟每日再平衡的指數不一樣(self) -> None:
-        # 這是換掉基準演算法的理由:個股是買進持有,基準也必須是
-        closes = {"a": {1: 10.0, 2: 20.0, 3: 10.0}, "b": {1: 10.0, 2: 5.0, 3: 10.0}}
-        bh = equal_weight_buy_and_hold(closes, 1, 3)
-        idx = equal_weight_index(closes)
-        chained = (idx[3] / idx[1] - 1) * 100
-        assert bh == pytest.approx(0.0)
-        assert chained != pytest.approx(bh)
+    def test_是買進持有而不是每日再平衡(self) -> None:
+        # a 漲一倍再跌回來、b 腰斬再漲回來 —— 買進持有的答案是 0%。
+        # 每日再平衡會一直砍贏家補輸家,答案不會是 0。個股那一邊是買進持有,
+        # 基準也必須是,不然長窗口上會有固定方向的偏差
+        closes = {
+            "a": {D(1): 10.0, D(2): 20.0, D(3): 10.0},
+            "b": {D(1): 10.0, D(2): 5.0, D(3): 10.0},
+        }
+        assert equal_weight_buy_and_hold(closes, D(1), D(3)) == pytest.approx(0.0)
+
+    def test_中間那幾天的價格完全不影響結果(self) -> None:
+        # 買進持有只看兩端。這是它和再平衡最直接的區別
+        calm = {"a": {D(1): 10.0, D(2): 10.0, D(3): 11.0}}
+        wild = {"a": {D(1): 10.0, D(2): 99.0, D(3): 11.0}}
+        assert equal_weight_buy_and_hold(calm, D(1), D(3)) == pytest.approx(
+            equal_weight_buy_and_hold(wild, D(1), D(3))
+        )
 
     def test_沒有任何股票兩端都有價格時回_None(self) -> None:
         assert equal_weight_buy_and_hold({"a": {1: 10.0}}, 1, 2) is None
@@ -433,101 +365,3 @@ class TestWindowExcess:
         assert got is not None  # 自己就是宇集,算得出來
         got2 = window_excess(lonely, {"y": {D(1): 1.0}}, D(1), D(9))
         assert got2 is None
-
-
-class TestHorizonReturns:
-    periods = [D(1), D(2), D(3), D(4), D(5)]
-    series = {D(i): float(100 + 10 * i) for i in range(1, 6)}
-    closes = {"a": series, "b": dict.fromkeys(series, 100.0)}
-
-    def test_每一筆都是持有_horizon_個期間(self) -> None:
-        got = horizon_returns(self.periods, self.series, self.closes, 2)
-        # 前三筆算得出來(0→2、1→3、2→4),後兩筆沒有出場期間
-        assert [v is not None for v in got] == [True, True, True, False, False]
-
-    def test_出場期間不存在時是_None_而不是用最後一筆(self) -> None:
-        # 用最後一筆會讓持有期悄悄縮短,而且看不出來。
-        # 5 個期間、持有 4 期:只有第 0 筆有出場期間(0→4),其餘都是 None
-        got = horizon_returns(self.periods, self.series, self.closes, 4)
-        assert [v is not None for v in got] == [True, False, False, False, False]
-
-    def test_持有期超過期間總數時全部是_None(self) -> None:
-        got = horizon_returns(self.periods, self.series, self.closes, 5)
-        assert got == [None] * 5
-
-    def test_持有期越長算得出來的筆數越少(self) -> None:
-        counts = [
-            sum(
-                v is not None
-                for v in horizon_returns(self.periods, self.series, self.closes, h)
-            )
-            for h in (1, 2, 3)
-        ]
-        assert counts == [4, 3, 2]
-
-    def test_時滯同時加在兩端(self) -> None:
-        # 只加在進場那一端的話持有期會短一截。原本這裡只斷言「算得出來的筆數
-        # 沒變多」,把那個 bug 植進去照樣會過 —— 要直接比對用到的價格。
-        lagged = horizon_returns(
-            self.periods, self.series, self.closes, 2, lag=timedelta(days=1)
-        )
-        # periods[0] + 1 天 = D(2),出場 periods[2] + 1 天 = D(4)
-        assert lagged[0] == pytest.approx(
-            window_excess(self.series, self.closes, D(2), D(4))
-        )
-
-    def test_只把時滯加在進場端會被抓到(self) -> None:
-        # 上面那個測試要防的就是這個錯:出場不加時滯,持有期少一天
-        lagged = horizon_returns(
-            self.periods, self.series, self.closes, 2, lag=timedelta(days=1)
-        )
-        wrong = window_excess(self.series, self.closes, D(2), D(3))
-        assert lagged[0] != pytest.approx(wrong)
-
-    def test_期間序列有缺口時持有期會變長(self) -> None:
-        # 集保農曆年那一週沒資料,跨過缺口的窗口實際天數會多。
-        # 只斷言長度的話,回傳 [None]*n 的爛實作也會過 —— 要比對實際用到的
-        # 是缺口兩側的價格。
-        gappy = [D(2), D(3), D(20)]
-        got = horizon_returns(gappy, self.series, self.closes, 1)
-        # 第 1 筆是 D(3) → D(20),跨了 17 天而不是 1 天
-        assert got[1] == pytest.approx(
-            window_excess(self.series, self.closes, D(3), D(20))
-        )
-
-
-class TestDirectionSplit:
-    def test_上升與下降分開(self) -> None:
-        up, down = direction_split([1.0, 2.0, 1.5, 3.0])
-        assert up == [1, 3]
-        assert down == [2]
-
-    def test_第一期兩邊都不出現(self) -> None:
-        # 當成「沒上升」會把一筆無從判斷的觀察塞進對照組
-        up, down = direction_split([1.0, 2.0])
-        assert 0 not in up
-        assert 0 not in down
-
-    def test_持平算沒上升(self) -> None:
-        up, down = direction_split([1.0, 1.0])
-        assert up == []
-        assert down == [1]
-
-    def test_None_的位置兩邊都不放(self) -> None:
-        up, down = direction_split([1.0, None, 3.0, 4.0])
-        # 位置 1 自己是 None,位置 2 的前一期是 None,兩個都跳過
-        assert up == [3]
-        assert down == []
-
-    def test_兩邊加起來不會超過總數減一(self) -> None:
-        values: list[float | None] = [1.0, 2.0, None, 4.0, 5.0]
-        up, down = direction_split(values)
-        assert len(up) + len(down) <= len(values) - 1
-
-    def test_位置不會重複出現在兩邊(self) -> None:
-        up, down = direction_split([1.0, 2.0, 1.0, 2.0, 2.0])
-        assert not set(up) & set(down)
-
-    def test_空序列與單一元素都回空(self) -> None:
-        assert direction_split([]) == ([], [])
-        assert direction_split([1.0]) == ([], [])

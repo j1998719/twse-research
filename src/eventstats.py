@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from scipy import stats
@@ -24,62 +23,10 @@ from src.market import ROUND_TRIP_COST_PCT
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from _typeshed import SupportsAllComparisons, SupportsRichComparison
+    from _typeshed import SupportsAllComparisons
 
 #: 一組少於這麼多筆就不做檢定,算出來也沒有意義
 MIN_GROUP = 4
-
-
-def equal_weight_index[DayT: SupportsRichComparison](
-    closes: dict[str, dict[DayT, float]],
-) -> dict[DayT, float]:
-    """用一籃子股票的等權報酬做基準指數,起點 100。
-
-    等權而不是市值加權:市值加權會被少數大型股主導,而事件樣本多半是中小型
-    股,拿大型股當基準比不出東西。
-
-    每天只用「當天和前一天都有價格」的股票算報酬 —— 停牌或還沒上市的不能
-    當成零報酬,那會把指數往下拉。
-    """
-    days = sorted({day for series in closes.values() for day in series})
-    level = 100.0
-    out: dict[DayT, float] = {}
-    prev: DayT | None = None
-    for day in days:
-        if prev is not None:
-            rets = [
-                series[day] / series[prev] - 1
-                for series in closes.values()
-                if day in series and prev in series and series[prev] > 0
-            ]
-            if rets:
-                level *= 1 + sum(rets) / len(rets)
-        out[day] = level
-        prev = day
-    return out
-
-
-def excess_return(
-    entry: float,
-    exit_: float,
-    bench_entry: float,
-    bench_exit: float,
-    *,
-    costs: bool = True,
-) -> float:
-    """對基準的超額報酬,百分比。
-
-    成本只扣在個股那一邊 —— 基準是不用交易的參考線,不是一個要付手續費的
-    部位。
-    """
-    if entry <= 0 or bench_entry <= 0:
-        msg = "進場價和基準起點都必須大於零"
-        raise ValueError(msg)
-    stock = (exit_ / entry - 1) * 100
-    bench = (bench_exit / bench_entry - 1) * 100
-    if costs:
-        stock -= ROUND_TRIP_COST_PCT
-    return stock - bench
 
 
 def non_overlapping(positions: Sequence[int], horizon: int) -> list[int]:
@@ -285,50 +232,3 @@ def window_excess[DayT: SupportsAllComparisons](
     if costs:
         stock -= ROUND_TRIP_COST_PCT
     return stock - bench
-
-
-def horizon_returns(
-    periods: Sequence[date],
-    series: dict[date, float],
-    closes: dict[str, dict[date, float]],
-    horizon: int,
-    lag: timedelta = timedelta(0),
-) -> list[float | None]:
-    """每個期間持有 horizon 個期間的超額報酬。算不出來的那一筆是 None。
-
-    periods 是事件期間的序列(例如集保的週次日期)。持有期是用「幾個期間」
-    算的,不是固定天數 —— 期間序列本身有缺口時(集保農曆年那一週就沒有
-    資料),實際天數會跟著變長,呼叫端要知道這件事。
-
-    lag 是資料公布的時滯,同時加在進場和出場上。兩端都加才是同樣長度的
-    持有期;只加在進場那一端會讓每一筆的持有期都短一截。
-    """
-    out: list[float | None] = []
-    for i, period in enumerate(periods):
-        if i + horizon >= len(periods):
-            out.append(None)
-            continue
-        out.append(
-            window_excess(series, closes, period + lag, periods[i + horizon] + lag)
-        )
-    return out
-
-
-def direction_split(
-    values: Sequence[float | None],
-) -> tuple[list[int], list[int]]:
-    """把序列分成「比上一期高」和「沒有比上一期高」的位置。
-
-    回傳 (上升, 沒上升)。第一期沒有前一期可比,兩邊都不會出現它 ——
-    當成「沒上升」會把一筆無從判斷的觀察塞進對照組。
-
-    任一邊是 None(那一期算不出指標)就整個位置跳過,兩邊都不放。
-    """
-    up: list[int] = []
-    down: list[int] = []
-    for i in range(1, len(values)):
-        now, before = values[i], values[i - 1]
-        if now is None or before is None:
-            continue
-        (up if now > before else down).append(i)
-    return up, down

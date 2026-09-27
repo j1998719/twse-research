@@ -16,7 +16,7 @@ from src.study import Event
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Sequence
 
     from src.tdcc import Week
 
@@ -26,23 +26,21 @@ PUBLISH_LAG = timedelta(days=5)
 
 def events(
     weeks: Iterable[Week],
-    tag: Callable[[Week | None, Week], dict[str, object]] | None = None,
+    tag: Callable[[Sequence[Week], Week], dict[str, object]] | None = None,
 ) -> list[Event]:
     """一檔股票的每一週變成一個事件。
 
-    tag 收 (前一週, 這一週) 兩個參數 —— 大戶籌碼的研究測的是**變化量**,
-    所以標籤幾乎一定要看得到前一週。第一週的前一週是 None。
+    tag 收 (這一週之前的全部週次, 這一週)。給完整歷史而不只是前一週,是因為
+    大戶籌碼的事件定義兩種都有:變化量只要前一週,但「從前 8 週高點回落」
+    要看一整段。第一週的歷史是空的。
     """
     ordered = sorted(weeks, key=lambda w: w.day)
-    out: list[Event] = []
-    for i, week in enumerate(ordered):
-        before = ordered[i - 1] if i else None
-        out.append(
-            Event(
-                code=week.code,
-                happened=week.day,
-                knowable=week.day + PUBLISH_LAG,
-                tags={} if tag is None else tag(before, week),
-            )
+    return [
+        Event(
+            code=week.code,
+            happened=week.day,
+            knowable=week.day + PUBLISH_LAG,
+            tags={} if tag is None else tag(ordered[:i], week),
         )
-    return out
+        for i, week in enumerate(ordered)
+    ]
