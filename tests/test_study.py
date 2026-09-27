@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -15,8 +15,10 @@ from src.study import (
     Grouping,
     Spec,
     Window,
+    anchor_window,
     compare_groups,
     one_sample,
+    period_window,
     pooled,
     report,
     resolve_window,
@@ -445,7 +447,12 @@ CLOSES = {
 
 
 def _spec(*groupings: Grouping) -> Spec:
-    return Spec(name="試驗", window=Window(0, 1), groupings=groupings, universe=10)
+    return Spec(
+        name="試驗",
+        window_of=anchor_window(DAYS, Window(0, 1)),
+        groupings=groupings,
+        universe=10,
+    )
 
 
 class TestRunStudy:
@@ -461,7 +468,7 @@ class TestRunStudy:
 
     def test_跑出結果與涵蓋率(self) -> None:
         spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
-        findings, cov = run_study(spec, self._events(), DAYS, CLOSES, periods=DAYS)
+        findings, cov = run_study(spec, self._events(), CLOSES, periods=DAYS)
         assert len(findings) == 1
         assert cov.universe == 10
         assert cov.codes == 3
@@ -471,7 +478,7 @@ class TestRunStudy:
             Grouping("漲組", 1, lambda e: e.code == "up"),
             Grouping("跌組", 1, lambda e: e.code == "down"),
         )
-        findings, _ = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        findings, _ = run_study(spec, self._events(), CLOSES, DAYS)
         assert [f.name for f in findings] == ["漲組", "跌組"]
 
     def test_回_None_的事件不參加那個檢定(self) -> None:
@@ -482,7 +489,7 @@ class TestRunStudy:
             return event.code == "up"
 
         spec = _spec(Grouping("漲對跌", 1, only_up_vs_down))
-        findings, _ = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        findings, _ = run_study(spec, self._events(), CLOSES, DAYS)
         assert findings[0].raw.n_event + findings[0].raw.n_control <= len(DAYS) * 2
 
     def test_窗口解不出來的事件不會進樣本(self) -> None:
@@ -493,7 +500,7 @@ class TestRunStudy:
             for day in DAYS[1:-1]
         ]
         spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
-        findings, cov = run_study(spec, blocked, DAYS, CLOSES, DAYS)
+        findings, cov = run_study(spec, blocked, CLOSES, DAYS)
         assert findings == []
         assert cov.usable == 0
         assert cov.events == len(blocked)
@@ -501,18 +508,18 @@ class TestRunStudy:
     def test_沒有價格的股票不會進樣本(self) -> None:
         ghost = [Event("沒這檔", day, DAYS[0]) for day in DAYS[1:-1]]
         spec = _spec(Grouping("x", 1, lambda _: True))
-        _, cov = run_study(spec, ghost, DAYS, CLOSES, DAYS)
+        _, cov = run_study(spec, ghost, CLOSES, DAYS)
         assert cov.usable == 0
 
     def test_涵蓋率會標出先導測試(self) -> None:
         spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
-        _, cov = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        _, cov = run_study(spec, self._events(), CLOSES, DAYS)
         # 3 檔 / 宇集 10 檔 = 30%
         assert cov.pilot is True
 
     def test_沒有事件時不會炸(self) -> None:
         spec = _spec(Grouping("x", 1, lambda _: True))
-        findings, cov = run_study(spec, [], DAYS, CLOSES, DAYS)
+        findings, cov = run_study(spec, [], CLOSES, DAYS)
         assert findings == []
         assert cov.span is None
 
@@ -576,3 +583,96 @@ class TestMirrorsPrice:
                 demeaned=Comparison("x", 5, 5, 0, 0, 0, 0, 0.5, deduped=True),
                 periods=5,
             )
+
+
+class TestPeriodWindow:
+    """往後幾個期間。時滯從事件的 knowable 推導,不另外給參數。"""
+
+    periods = [date(2026, 1, d) for d in (5, 12, 19, 26)]
+
+    def _event(self, day: date, lag_days: int) -> Event:
+        return Event("1101", day, day + timedelta(days=lag_days))
+
+    def test_進場是資訊公開的隔天(self) -> None:
+        resolve = period_window(self.periods, 1)
+        got = resolve(self._event(date(2026, 1, 5), lag_days=5))
+        assert got is not None
+        assert got[0] == date(2026, 1, 11)
+
+    def test_同樣的位移也套在出場期間上(self) -> None:
+        # 兩端一致持有期才不會少一截
+        resolve = period_window(self.periods, 1)
+        got = resolve(self._event(date(2026, 1, 5), lag_days=5))
+        assert got == (date(2026, 1, 11), date(2026, 1, 18))
+
+    def test_持有期就是期間之間的距離(self) -> None:
+        resolve = period_window(self.periods, 2)
+        got = resolve(self._event(date(2026, 1, 5), lag_days=5))
+        assert got is not None
+        assert (got[1] - got[0]).days == 14
+
+    def test_進場一定嚴格晚於_knowable(self) -> None:
+        # 時滯給兩個地方決定的話,進場會剛好等於 knowable 而被全部拒掉
+        event = self._event(date(2026, 1, 5), lag_days=5)
+        got = period_window(self.periods, 1)(event)
+        assert got is not None
+        assert got[0] > event.knowable
+
+    def test_沒有時滯時進場是事件的隔天(self) -> None:
+        resolve = period_window(self.periods, 1)
+        got = resolve(self._event(date(2026, 1, 5), lag_days=0))
+        assert got == (date(2026, 1, 6), date(2026, 1, 13))
+
+    def test_出場期間不存在時回_None(self) -> None:
+        resolve = period_window(self.periods, 2)
+        assert resolve(self._event(date(2026, 1, 19), lag_days=5)) is None
+
+    def test_事件的日期不在期間序列上回_None(self) -> None:
+        resolve = period_window(self.periods, 1)
+        assert resolve(self._event(date(2026, 1, 6), lag_days=5)) is None
+
+    def test_期間有缺口時窗口實際天數會變長(self) -> None:
+        # 集保農曆年那一週沒資料 —— 跨過缺口的窗口天數就是比較長
+        gappy = [date(2026, 2, 6), date(2026, 2, 13), date(2026, 2, 26)]
+        resolve = period_window(gappy, 1)
+        normal = resolve(self._event(date(2026, 2, 6), lag_days=5))
+        across = resolve(self._event(date(2026, 2, 13), lag_days=5))
+        assert normal is not None
+        assert across is not None
+        assert (normal[1] - normal[0]).days == 7
+        assert (across[1] - across[0]).days == 13
+
+
+class TestRunStudyGuardCannotBeBypassed:
+    """換一個窗口解析器也繞不過 knowable 的檢查。"""
+
+    def test_解析器不檢查_knowable_時_run_study_還是會擋(self) -> None:
+        def reckless(_: Event) -> tuple[date, date]:
+            """故意完全不管 knowable。"""
+            return DAYS[0], DAYS[-1]
+
+        events = [Event("up", DAYS[3], DAYS[5])]
+        spec = Spec(
+            name="x",
+            window_of=reckless,
+            groupings=(Grouping("x", 1, lambda _: True),),
+            universe=1,
+        )
+        _, cov = run_study(spec, events, CLOSES, DAYS)
+        # 進場是 DAYS[0],早於 knowable=DAYS[5],所以整筆丟掉
+        assert cov.usable == 0
+
+    def test_進場晚於_knowable_就收(self) -> None:
+        def fine(_: Event) -> tuple[date, date]:
+            """進場晚於 knowable。"""
+            return DAYS[6], DAYS[-1]
+
+        events = [Event("up", DAYS[3], DAYS[5])]
+        spec = Spec(
+            name="x",
+            window_of=fine,
+            groupings=(Grouping("x", 1, lambda _: True),),
+            universe=1,
+        )
+        _, cov = run_study(spec, events, CLOSES, DAYS)
+        assert cov.usable == 1

@@ -1,160 +1,97 @@
-"""跑 [#20] 的集中度檢定。
+"""跑 [#20] 的集中度檢定,完全走 [#22] 的框架。
 
 [#20] 原本只跑穩懋一檔,而且用的是 [#19] 的 review 抓出問題**之前**的管線:
 沒有去期間化,基準是每日再平衡指數對上買進持有的個股。那一輪唯一留下的
 「線索」是 Gini 隨持有期單調變強(原始 p 從 0.975 降到 0.049)—— 而期間
-叢聚正是會製造那種梯度的東西,所以必須用修好的機制重驗。
+叢聚正是會製造那種梯度的東西。
 
 事前登記的組合:2 個指標 × 5 個持有期 = 10 個檢定,一次 BH 校正。
-([#20] 原本寫 3 個指標,但「等效持有人數」是 1/HHI,跑出來是同一個檢定 ——
-見 METRICS 的註解。)改變的是樣本(穩懋一檔 → [#21] 的 20 檔系統性抽樣,因為穩懋是上櫃、
-本地沒有價格)以及修好的報酬算法。
+([#20] 原本寫 3 個指標,但「等效持有人數」是 1/HHI,跑出來會是同一個檢定。)
 
-這仍然不是全市場研究,見 [#23]。
+走框架的意義在於守衛不再靠自律:進場早於公布日的事件進不了樣本、重疊窗口
+自動篩掉並回報獨立期間數、去期間化與原始兩種都算、同期相關性一起算、
+涵蓋率跟著輸出並在低於門檻時標示為先導測試([#23])。
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from src.eventdata import PUBLISH_LAG, available_codes, load_closes, load_weeks
-from src.eventstats import (
-    Observation,
-    adjust,
-    compare,
-    demean_by_period,
-    direction_split,
-    effective_n,
-    horizon_returns,
-    non_overlapping,
-)
-from src.tdcc import gini, herfindahl
+from src.eventdata import available_codes, load_closes, load_weeks
+from src.events.dispersion import events as dispersion_events
+from src.study import Event, Grouping, Spec, period_window, report, run_study
+from src.tdcc import Week, gini, herfindahl
 
 
-if TYPE_CHECKING:
-    from datetime import date
-
-
-#: 事前登記的持有期(幾個集保週次)
+#: 事前登記的持有期(幾個集保週次)。跑完不補測
 HORIZONS = (1, 2, 4, 8, 13)
-#: 事前登記的指標。
-#:
-#: 原本寫了三個,把「等效持有人數」也算進去 —— 那是錯的:它就是 1/HHI,
-#: 一個嚴格遞減的轉換,所以「比上一週上升」的分組會完全對調,而 Mann-Whitney
-#: 雙尾對調兩組是對稱的。五個持有期跑出來的 p 值一模一樣,是同一個檢定
-#: 報兩次。檢定數從 15 修正為 10。
-#:
-#: 等效持有人數仍然印出來當參考(它比 HHI 好讀),但不算進校正的家族裡。
+#: 事前登記的指標
 METRICS = ("HHI", "Gini")
-#: 校正後低於這個才算顯著
-ALPHA = 0.05
 
 
-def metric_series(code: str) -> tuple[list[date], dict[str, list[float | None]]]:
-    """一檔股票的週次日期,以及各個集中度指標的逐週值。
+def _value(name: str, week: Week) -> float | None:
+    return herfindahl(week) if name == "HHI" else gini(week)
 
-    兩個回傳值用同一個位置對齊:days[i] 對應每個 metrics[name][i]。呼叫端
-    靠這個把報酬和期間對上,所以順序不能動。
+
+def _tags(before: Week | None, week: Week) -> dict[str, object]:
+    """每個指標的「這一週」和「前一週」都掛上去,分組時要比大小。"""
+    tags: dict[str, object] = {}
+    for name in METRICS:
+        tags[name] = _value(name, week)
+        tags[f"prev_{name}"] = None if before is None else _value(name, before)
+    return tags
+
+
+def rose(name: str) -> object:
+    """分組:這一週的指標比上一週高。
+
+    任一邊算不出來就回 None —— 那一筆不參加這個檢定,而不是被當成
+    「沒上升」塞進對照組,那會讓一筆無從判斷的觀察污染對照組。
     """
-    weeks = load_weeks(code)
-    return [w.day for w in weeks], {
-        "HHI": [herfindahl(w) for w in weeks],
-        "Gini": [gini(w) for w in weeks],
-    }
+
+    def decide(event: Event) -> bool | None:
+        now = event.tags.get(name)
+        before = event.tags.get(f"prev_{name}")
+        if not isinstance(now, float) or not isinstance(before, float):
+            return None
+        return now > before
+
+    return decide
 
 
 def main() -> int:
-    """跑 15 個檢定,原始與去期間化各一輪。"""
-    codes = available_codes()
+    """跑 10 個檢定。每個持有期是一個 Spec,因為窗口長度不同。"""
     closes = load_closes()
-    print(f"樣本 {len(codes)} 檔,基準用 {len(closes)} 檔逐窗口買進持有等權")
-    print(f"事件 = 指標比上一週上升。持有期 {HORIZONS} 個集保週次\n")
+    events: list[Event] = []
+    weeks: set[object] = set()
+    for code in available_codes():
+        loaded = load_weeks(code)
+        weeks.update(w.day for w in loaded)
+        events.extend(dispersion_events(loaded, tag=_tags))
+    periods = sorted(weeks)  # type: ignore[type-var]
 
-    pooled: dict[tuple[str, int], list[Observation]] = {
-        (m, h): [] for m in METRICS for h in HORIZONS
-    }
-    for code in codes:
-        series = closes.get(code)
-        if not series:
-            continue
-        days, metrics = metric_series(code)
-        for horizon in HORIZONS:
-            rets = horizon_returns(days, series, closes, horizon, PUBLISH_LAG)
-            for name in METRICS:
-                rising, falling = direction_split(metrics[name])
-                for group, is_event in ((rising, True), (falling, False)):
-                    for i in non_overlapping(group, horizon):
-                        value = rets[i]
-                        if value is not None:
-                            pooled[(name, horizon)].append(
-                                Observation(
-                                    code=code,
-                                    period=days[i],
-                                    excess=value,
-                                    is_event=is_event,
-                                )
-                            )
+    print(f"樣本 {len({e.code for e in events})} 檔,基準用 {len(closes)} 檔")
+    print(f"事件 = 指標比上一週上升。持有期 {HORIZONS} 個集保週次")
 
-    _report("原始(未去期間化)", pooled, demean=False)
-    _report("去期間化後 —— 這是主要結果", pooled, demean=True)
-    _print_periods(pooled)
+    findings = []
+    coverage = None
+    for horizon in HORIZONS:
+        spec = Spec(
+            name=f"集中度/{horizon}週",
+            window_of=period_window(periods, horizon),  # type: ignore[arg-type]
+            groupings=tuple(
+                Grouping(f"{name}/{horizon}週", horizon, rose(name))  # type: ignore[arg-type]
+                for name in METRICS
+            ),
+            universe=len(closes),
+        )
+        got, coverage = run_study(spec, events, closes, periods)
+        findings.extend(got)
+
+    if coverage is None:
+        print("沒有可用的持有期")
+        return 1
+    print()
+    print(report(findings, coverage))
     return 0
-
-
-def _report(
-    title: str,
-    pooled: dict[tuple[str, int], list[Observation]],
-    *,
-    demean: bool,
-) -> None:
-    """跑一輪 15 個檢定並印表。"""
-    results = []
-    for (name, horizon), items in pooled.items():
-        use = demean_by_period(items) if demean else items
-        got = compare(
-            f"{name}/{horizon}週",
-            [o.excess for o in use if o.is_event],
-            [o.excess for o in use if not o.is_event],
-            deduped=True,
-        )
-        if got is not None:
-            results.append(got)
-    print(f"\n=== {title} ===")
-    if demean:
-        # direction_split 把整個橫斷面切成上升/沒上升兩邊,所以每一期扣掉的
-        # 是「兩組聯集」的中位數 —— 兩組的中位數會依構造對稱地落在 0 兩側,
-        # 勝率也會被推向 50%。這幾欄在這一輪不能當幅度讀,只有 p 值有意義
-        # (Mann-Whitney 用的是等級,期間內的平移不影響它)。
-        print("  註:去期間化之後,中位數與勝率依構造會靠近 0 與 50%,只看 p 值")
-    print(
-        f"{'指標':16}{'週':>3}{'事件n':>6}{'對照n':>6}"
-        f"{'事件中位':>9}{'對照中位':>9}{'事件勝率':>9}{'對照勝率':>9}"
-        f"{'原始p':>8}{'校正p':>8}"
-    )
-    scored = adjust(results)
-    for got, adjusted in scored:
-        label, weeks = got.name.rsplit("/", 1)
-        mark = " <-" if adjusted < ALPHA else ""
-        print(
-            f"{label:16}{weeks.replace('週', ''):>3}{got.n_event:>6}"
-            f"{got.n_control:>6}{got.median_event:>+8.1f}%"
-            f"{got.median_control:>+8.1f}%{got.win_rate_event:>8.0%}"
-            f"{got.win_rate_control:>9.0%}{got.pvalue:>8.3f}{adjusted:>8.3f}{mark}"
-        )
-    hits = sum(1 for _, a in scored if a < ALPHA)
-    print(f"\n{len(results)} 個檢定,FDR 校正後顯著:{hits} 個")
-
-
-def _print_periods(pooled: dict[tuple[str, int], list[Observation]]) -> None:
-    """觀察筆數 vs 不同週次。20 檔共用同一組週次,筆數會高估獨立樣本數。"""
-    print("\n事件組筆數 vs 不同週次(獨立樣本數更接近後者):")
-    for (name, horizon), items in sorted(pooled.items()):
-        events = [o for o in items if o.is_event]
-        if events:
-            print(
-                f"  {name:14} {horizon:>2}週  {len(events):>3} 筆 / "
-                f"{effective_n(events):>2} 週"
-            )
 
 
 if __name__ == "__main__":

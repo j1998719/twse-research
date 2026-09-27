@@ -25,18 +25,24 @@ PUBLISH_LAG = timedelta(days=5)
 
 
 def events(
-    weeks: Iterable[Week], tag: Callable[[Week], dict[str, object]] | None = None
+    weeks: Iterable[Week],
+    tag: Callable[[Week | None, Week], dict[str, object]] | None = None,
 ) -> list[Event]:
     """一檔股票的每一週變成一個事件。
 
-    tag 可以附上分組要用的東西(指標值、變化方向…)。沒給就是空的。
+    tag 收 (前一週, 這一週) 兩個參數 —— 大戶籌碼的研究測的是**變化量**,
+    所以標籤幾乎一定要看得到前一週。第一週的前一週是 None。
     """
-    return [
-        Event(
-            code=week.code,
-            happened=week.day,
-            knowable=week.day + PUBLISH_LAG,
-            tags={} if tag is None else tag(week),
+    ordered = sorted(weeks, key=lambda w: w.day)
+    out: list[Event] = []
+    for i, week in enumerate(ordered):
+        before = ordered[i - 1] if i else None
+        out.append(
+            Event(
+                code=week.code,
+                happened=week.day,
+                knowable=week.day + PUBLISH_LAG,
+                tags={} if tag is None else tag(before, week),
+            )
         )
-        for week in sorted(weeks, key=lambda w: w.day)
-    ]
+    return out

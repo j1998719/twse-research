@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from scipy import stats
@@ -414,6 +415,16 @@ class Grouping:
 class Spec:
     """要測什麼。**跑之前就要寫完。**
 
+    `window_of` 把一個事件變成 (進場日, 出場日),或 None 代表算不出來。
+    兩個研究的窗口語意根本不同,所以這裡收的是函式而不是偏移量:
+
+    * 處置股:相對出關日的**交易日偏移** —— 用 `anchor_window()`
+    * 大戶籌碼:往後**幾個集保週次** —— 用 `period_window()`,因為週次序列
+      本身有缺口(農曆年那一週沒資料),往後 13 週不是固定的 91 天
+
+    不管用哪一個,`run_study` 都會自己檢查進場晚於 knowable。解析器回傳的
+    窗口不合格就整筆丟掉,所以偷看未來的事件進不了樣本。
+
     groupings 是 tuple 而不是 list:跑完才想加一個檢定的話,得回來改這個
     物件並重跑整組,而校正的家族大小會跟著變。這不能阻止人作弊,但它讓
     「事後補一個檢定」變成一件看得見的事,而不是在 for 迴圈裡多一行。
@@ -422,47 +433,89 @@ class Spec:
     """
 
     name: str
-    window: Window
+    window_of: Callable[[Event], tuple[date, date] | None]
     groupings: tuple[Grouping, ...]
     #: 宇集有幾檔。涵蓋率要靠它算,所以必須由外面明確給
     universe: int
 
 
+def anchor_window(
+    days: Sequence[date], window: Window
+) -> Callable[[Event], tuple[date, date] | None]:
+    """相對事件原點的交易日偏移。處置股用這個。"""
+
+    def resolve(event: Event) -> tuple[date, date] | None:
+        return resolve_window(event, days, window)
+
+    return resolve
+
+
+def period_window(
+    periods: Sequence[date], horizon: int
+) -> Callable[[Event], tuple[date, date] | None]:
+    """往後 horizon 個期間。大戶籌碼用這個。
+
+    時滯不在這裡給 —— 它從事件自己的 `knowable` 推導出來。進場是資訊公開的
+    隔天,出場把同樣的位移套在出場期間上,兩端一致持有期才不會少一截。
+
+    時滯只能有一個來源。之前這裡收一個 lag 參數,而轉接層也把同一個時滯加進
+    knowable,結果進場日剛好等於 knowable、被嚴格不等式全部拒掉 ——
+    兩個地方各自決定同一件事,就一定會有一個是錯的。
+
+    期間序列有缺口時,實際天數會跟著變長 —— 那是事實而不是 bug:集保在
+    農曆年那一週沒資料,所以跨過缺口的 13 週窗口實際是 98 天。
+    """
+    ordinal = {period: i for i, period in enumerate(periods)}
+
+    def resolve(event: Event) -> tuple[date, date] | None:
+        at = ordinal.get(event.happened)
+        if at is None or at + horizon >= len(periods):
+            return None
+        # 進場是資訊公開的隔天。同樣的位移也套在出場期間上
+        shift = event.knowable - event.happened + timedelta(days=1)
+        return event.happened + shift, periods[at + horizon] + shift
+
+    return resolve
+
+
 def run_study(
     spec: Spec,
     events: Sequence[Event],
-    days: Sequence[date],
     closes: dict[str, dict[date, float]],
     periods: Sequence[object],
 ) -> tuple[list[Finding], Coverage]:
     """跑完 Spec 裡的每一個檢定,回傳結果與涵蓋率。
 
-    這是框架的入口。從這裡進去的研究自動得到:窗口解不出來就沒有報酬
-    (所以偷看未來的事件進不了樣本)、重疊窗口篩掉並回報獨立期間數、
-    去期間化與原始兩種都算、同期相關性一起算、涵蓋率跟著輸出。
+    這是框架的入口。從這裡進去的研究自動得到:進場早於 knowable 的事件被
+    丟掉、重疊窗口篩掉並回報獨立期間數、去期間化與原始兩種都算、同期相關性
+    一起算、涵蓋率跟著輸出。
     """
     scored: list[tuple[Event, float]] = []
     for event in events:
-        value = window_return(event, days, spec.window, closes)
+        span = spec.window_of(event)
+        # 守衛在這裡,不在解析器裡 —— 換一個解析器也繞不過去
+        if span is None or span[0] <= event.knowable:
+            continue
+        series = closes.get(event.code)
+        if series is None:
+            continue
+        value = window_excess(series, closes, *span)
         if value is not None:
             scored.append((event, value))
     usable = [event for event, _ in scored]
 
     findings: list[Finding] = []
     for grouping in spec.groupings:
-        observations: list[Observation] = []
-        for event, value in scored:
-            side = grouping.is_event(event)
-            if side is None:
-                continue
-            observations.append(
-                Observation(
-                    code=event.code,
-                    period=event.happened,
-                    excess=value,
-                    is_event=side,
-                )
+        observations = [
+            Observation(
+                code=event.code,
+                period=event.happened,
+                excess=value,
+                is_event=side,
             )
+            for event, value in scored
+            if (side := grouping.is_event(event)) is not None
+        ]
         found = compare_groups(grouping.name, observations, grouping.horizon, periods)
         if found is not None:
             findings.append(found)
