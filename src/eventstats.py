@@ -1,0 +1,179 @@
+"""事件研究共用的報酬與統計。
+
+這些東西在 [#14] / [#18] / [#20] 各自手寫過一次,每次都有機會犯不同的錯。
+集中在這裡,並且把踩過的坑做成預設行為:
+
+* 報酬可以扣掉基準(超額報酬)—— [#18] 少了這一步
+* 長持有期用不重疊區塊 —— [#20] 把 36 個重疊觀察當成 36 個樣本
+* 多重比較校正是 adjust() 的預設,不是選項 —— [#14] 死在這上面
+* 同期相關性有專門的函式,提醒每個新指標都要一起報 —— [#18] 的主要教訓
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+
+from src.market import ROUND_TRIP_COST_PCT
+
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable, Sequence
+
+#: 一組少於這麼多筆就不做檢定,算出來也沒有意義
+MIN_GROUP = 4
+
+
+def equal_weight_index(
+    closes: dict[str, dict[Hashable, float]],
+) -> dict[Hashable, float]:
+    """用一籃子股票的等權報酬做基準指數,起點 100。
+
+    等權而不是市值加權:市值加權會被少數大型股主導,而事件樣本多半是中小型
+    股,拿大型股當基準比不出東西。
+
+    每天只用「當天和前一天都有價格」的股票算報酬 —— 停牌或還沒上市的不能
+    當成零報酬,那會把指數往下拉。
+    """
+    days = sorted({day for series in closes.values() for day in series})  # type: ignore[type-var]
+    level = 100.0
+    out: dict[Hashable, float] = {}
+    prev: Hashable | None = None
+    for day in days:
+        if prev is not None:
+            rets = [
+                series[day] / series[prev] - 1
+                for series in closes.values()
+                if day in series and prev in series and series[prev] > 0
+            ]
+            if rets:
+                level *= 1 + sum(rets) / len(rets)
+        out[day] = level
+        prev = day
+    return out
+
+
+def excess_return(
+    entry: float,
+    exit_: float,
+    bench_entry: float,
+    bench_exit: float,
+    *,
+    costs: bool = True,
+) -> float:
+    """對基準的超額報酬,百分比。
+
+    成本只扣在個股那一邊 —— 基準是不用交易的參考線,不是一個要付手續費的
+    部位。
+    """
+    if entry <= 0 or bench_entry <= 0:
+        msg = "進場價和基準起點都必須大於零"
+        raise ValueError(msg)
+    stock = (exit_ / entry - 1) * 100
+    bench = (bench_exit / bench_entry - 1) * 100
+    if costs:
+        stock -= ROUND_TRIP_COST_PCT
+    return stock - bench
+
+
+def non_overlapping(positions: Sequence[int], horizon: int) -> list[int]:
+    """從事件位置裡挑出窗口互不重疊的一組,由早到晚貪心選。
+
+    positions 是事件在時間序列上的索引(例如第幾週),horizon 是持有幾期。
+    相隔不到 horizon 期的兩個事件,報酬窗口重疊、彼此相關,當成兩個獨立
+    樣本會把樣本數虛報好幾倍 —— [#20] 就是這樣把約 3 個獨立區塊講成 36
+    個觀察。
+
+    由早到晚貪心,在「最多能選幾個」這件事上是最佳解。
+    """
+    if horizon < 1:
+        msg = "持有期至少是 1"
+        raise ValueError(msg)
+    kept: list[int] = []
+    for pos in sorted(positions):
+        if not kept or pos - kept[-1] >= horizon:
+            kept.append(pos)
+    return kept
+
+
+@dataclass(frozen=True)
+class Comparison:
+    """事件組和對照組的比較結果。"""
+
+    name: str
+    n_event: int
+    n_control: int
+    median_event: float
+    median_control: float
+    win_rate_event: float
+    win_rate_control: float
+    pvalue: float
+    #: 有沒有先做不重疊篩選。長持有期應該是 True
+    deduped: bool
+
+
+def _median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def compare(
+    name: str,
+    event: Sequence[float],
+    control: Sequence[float],
+    *,
+    deduped: bool = False,
+) -> Comparison | None:
+    """兩組報酬的 Mann-Whitney 比較。任一組少於 MIN_GROUP 筆就回 None。
+
+    雙尾:訊號可能往任何方向,事前假設它往哪邊等於偷看結果。
+    """
+    if len(event) < MIN_GROUP or len(control) < MIN_GROUP:
+        return None
+    return Comparison(
+        name=name,
+        n_event=len(event),
+        n_control=len(control),
+        median_event=_median(event),
+        median_control=_median(control),
+        win_rate_event=sum(x > 0 for x in event) / len(event),
+        win_rate_control=sum(x > 0 for x in control) / len(control),
+        pvalue=float(
+            stats.mannwhitneyu(event, control, alternative="two-sided").pvalue
+        ),
+        deduped=deduped,
+    )
+
+
+def adjust(comparisons: Sequence[Comparison]) -> list[tuple[Comparison, float]]:
+    """對整組檢定做 Benjamini-Hochberg 校正,回傳 (比較, 校正後 p)。
+
+    預設行為而不是選項:[#14] 有 10 個檢定、3 個原始 p<0.05,校正後全部
+    不顯著。跑一組檢定只看原始 p 值,幾乎保證會找到假訊號。
+
+    只有一個檢定時校正等於沒做,但仍然走同一條路,呼叫端不用分兩種情況。
+    """
+    if not comparisons:
+        return []
+    adjusted = multipletests([c.pvalue for c in comparisons], method="fdr_bh")[1]
+    return list(zip(comparisons, (float(p) for p in adjusted), strict=True))
+
+
+def contemporaneous(
+    changes: Sequence[float], same_period_returns: Sequence[float]
+) -> tuple[float, float]:
+    """指標變化和「同一期」報酬的相關性,回傳 (Spearman r, p)。
+
+    每個新指標都要一起報這個。[#18] 的千張大戶人數對同期 r=0.464
+    (p=0.001)、對未來 r=0.130 (p=0.390) —— 同期強而領先弱,意思是這個指標
+    是價格的鏡像。只看領先那一邊會誤判成「沒訊號」,而真相是「有訊號但不能
+    用」,兩者要分清楚。
+    """
+    result = stats.spearmanr(changes, same_period_returns)
+    return float(result.statistic), float(result.pvalue)
