@@ -21,15 +21,17 @@ from src.market import ROUND_TRIP_COST_PCT
 
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Sequence
+    from collections.abc import Sequence
+
+    from _typeshed import SupportsRichComparison
 
 #: 一組少於這麼多筆就不做檢定,算出來也沒有意義
 MIN_GROUP = 4
 
 
-def equal_weight_index(
-    closes: dict[str, dict[Hashable, float]],
-) -> dict[Hashable, float]:
+def equal_weight_index[DayT: SupportsRichComparison](
+    closes: dict[str, dict[DayT, float]],
+) -> dict[DayT, float]:
     """用一籃子股票的等權報酬做基準指數,起點 100。
 
     等權而不是市值加權:市值加權會被少數大型股主導,而事件樣本多半是中小型
@@ -38,10 +40,10 @@ def equal_weight_index(
     每天只用「當天和前一天都有價格」的股票算報酬 —— 停牌或還沒上市的不能
     當成零報酬,那會把指數往下拉。
     """
-    days = sorted({day for series in closes.values() for day in series})  # type: ignore[type-var]
+    days = sorted({day for series in closes.values() for day in series})
     level = 100.0
-    out: dict[Hashable, float] = {}
-    prev: Hashable | None = None
+    out: dict[DayT, float] = {}
+    prev: DayT | None = None
     for day in days:
         if prev is not None:
             rets = [
@@ -115,7 +117,8 @@ class Comparison:
     deduped: bool
 
 
-def _median(values: Sequence[float]) -> float:
+def median(values: Sequence[float]) -> float:
+    """中位數。偶數筆取中間兩筆的平均。"""
     ordered = sorted(values)
     mid = len(ordered) // 2
     if len(ordered) % 2:
@@ -140,8 +143,8 @@ def compare(
         name=name,
         n_event=len(event),
         n_control=len(control),
-        median_event=_median(event),
-        median_control=_median(control),
+        median_event=median(event),
+        median_control=median(control),
         win_rate_event=sum(x > 0 for x in event) / len(event),
         win_rate_control=sum(x > 0 for x in control) / len(control),
         pvalue=float(
