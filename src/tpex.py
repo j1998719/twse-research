@@ -14,10 +14,11 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.request
 from dataclasses import dataclass
-from datetime import date  # noqa: TC003 - Quote 的欄位在 runtime 也要它
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from src.prices import to_float
@@ -178,3 +179,87 @@ def parse_disposals(payload: dict[str, Any]) -> Iterator[dict[str, str]]:
         if not is_common_stock(code):
             continue
         yield {name: str(row[i]).strip() for name, i in at.items() if name}
+
+
+# --- 正規化成和上市同一個形狀 ---
+#
+# 兩個市場的公告格式不一樣,但研究要把它們放在一起,所以上櫃要轉成 twse.Punish
+# 的欄位。差別最大的是「第幾次處置」:
+#
+# * 上市:寫在「處置措施」欄,文字就是「第一次處置」「第二次處置」
+# * 上櫃:沒有那個欄位。重複處置寫在處置內容的文字裡 ——
+#   「最近30個營業日內曾發布處置」
+#
+# 實測上櫃有 36.8% 帶那句話,和上市的 34% 第二次處置率很接近,互相印證。
+#
+# **「累計」那一欄兩邊都不能當次數。** 它是相對查詢區間算的,換個區間就變。
+
+#: 上櫃版的「第二次(含)以上」。上市是在處置措施欄寫「第二次處置」
+REPEAT_MARK = "最近30個營業日內曾發布處置"
+#: 處置期間的格式:115/09/23~115/10/05
+PERIOD_SEP = "~"
+#: 這個來源的文字欄位會夾帶相對連結,例如
+#: 「豪勉(../../mainboard/listed/company-detail.html?code=6218)」。
+#: 不清掉的話股票名稱會帶著一串路徑,而且欄位一樣長不出錯
+_LINK = re.compile(r"\s*\([./][^)]*\)")
+
+
+def clean_text(value: str) -> str:
+    """去掉夾帶的相對連結與前後空白。"""
+    return _LINK.sub("", value or "").strip()
+
+
+def roc_to_date(stamp: str) -> date | None:
+    """民國日期轉西元。格式不對回 None。
+
+    年份上限要檢查:西元年份被當成民國會算出 2026+1911=3937 這種值,
+    而且完全不會報錯([#13] 踩過)。
+    """
+    parts = stamp.strip().split("/")
+    if len(parts) != ROC_PARTS:
+        return None
+    try:
+        year, month, day = (int(p) for p in parts)
+    except ValueError:
+        return None
+    if not 1 <= year <= ROC_YEAR_MAX:
+        return None
+    try:
+        return date(year + 1911, month, day)
+    except ValueError:
+        return None
+
+
+#: 民國日期的欄位數:年/月/日
+ROC_PARTS = 3
+#: 民國年的合理上限。超過就是有人把西元年當民國年傳進來了
+ROC_YEAR_MAX = 200
+
+
+def normalise(row: dict[str, str]) -> dict[str, object] | None:
+    """一列上櫃處置公告轉成和上市 Punish 一樣的欄位。
+
+    解不出日期就回 None —— 猜一個日期比少一筆事件糟得多。
+    """
+    period = row.get("處置起訖時間", "")
+    if PERIOD_SEP not in period:
+        return None
+    head, tail = period.split(PERIOD_SEP, 1)
+    start, end = roc_to_date(head), roc_to_date(tail)
+    announced = roc_to_date(row.get("公布日期", ""))
+    if start is None or end is None or announced is None or end < start:
+        return None
+    detail = clean_text(row.get("處置內容", ""))
+    return {
+        "announced": announced,
+        "code": clean_text(row.get("證券代號", "")),
+        "name": clean_text(row.get("證券名稱", "")),
+        # 上櫃沒有「第幾次處置」欄。帶著重複處置字樣的算第二次,其餘第一次
+        "nth": 2 if REPEAT_MARK in detail else 1,
+        "measure": "第二次處置" if REPEAT_MARK in detail else "第一次處置",
+        "condition": clean_text(row.get("處置原因", "")),
+        "start": start,
+        "end": end,
+        "detail": detail,
+        "market": "otc",
+    }

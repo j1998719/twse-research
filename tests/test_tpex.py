@@ -9,10 +9,13 @@ import pytest
 
 from src.tpex import (
     cached_quotes,
+    clean_text,
     is_common_stock,
+    normalise,
     parse_disposals,
     parse_quotes,
     roc,
+    roc_to_date,
 )
 
 
@@ -255,3 +258,111 @@ class TestCachedQuotes:
         monkeypatch.setattr("src.tpex.fetch_quotes", lambda _: {"tables": []})
         second = cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
         assert first == second
+
+
+class TestCleanText:
+    """這個來源的文字欄位會夾帶相對連結,不清掉欄位一樣長不出錯。"""
+
+    def test_去掉夾帶的相對連結(self) -> None:
+        raw = "豪勉(../../mainboard/listed/company-detail.html?code=6218)"
+        assert clean_text(raw) == "豪勉"
+
+    def test_處置原因裡的連結也清掉(self) -> None:
+        raw = "因連續3個營業日達本中心作業要點第四條第一項第一款(./attention.html)"
+        assert clean_text(raw).endswith("第一款")
+
+    def test_正常的括號不會被誤刪(self) -> None:
+        # 只清「以 . 或 / 開頭」的括號內容 —— 公告文字本身有很多正常括號
+        raw = "豪勉科技股份有限公司股票(代號:6218)"
+        assert clean_text(raw) == raw
+
+    def test_前後空白一起去掉(self) -> None:
+        assert clean_text("  豪勉  ") == "豪勉"
+
+    def test_空值不會炸(self) -> None:
+        assert clean_text("") == ""
+
+
+class TestRocToDate:
+    def test_民國轉西元(self) -> None:
+        assert roc_to_date("115/09/23") == date(2026, 9, 23)
+
+    def test_前後空白可以(self) -> None:
+        assert roc_to_date(" 109/01/02 ") == date(2020, 1, 2)
+
+    def test_西元年被當民國年要擋掉(self) -> None:
+        # 不擋的話 2026+1911=3937,而且完全不會報錯 —— [#13] 踩過這個
+        assert roc_to_date("2026/09/23") is None
+
+    def test_欄位數不對回_None(self) -> None:
+        assert roc_to_date("115/09") is None
+        assert roc_to_date("") is None
+
+    def test_不是數字回_None(self) -> None:
+        assert roc_to_date("一一五/09/23") is None
+
+    def test_不存在的日期回_None(self) -> None:
+        assert roc_to_date("115/02/30") is None
+
+
+class TestNormalise:
+    def _row(self, **over: str) -> dict[str, str]:
+        base = {
+            "公布日期": "115/09/22",
+            "證券代號": "6218",
+            "證券名稱": "豪勉(../../x.html?code=6218)",
+            "處置起訖時間": "115/09/23~115/10/05",
+            "處置原因": "連續3個營業日",
+            "處置內容": "因連續3個營業日達本中心作業要點第四條第一項第一款",
+            "累計": "6",
+        }
+        base.update(over)
+        return base
+
+    def test_轉成和上市一樣的欄位(self) -> None:
+        got = normalise(self._row())
+        assert got is not None
+        assert got["code"] == "6218"
+        assert got["name"] == "豪勉"
+        assert got["start"] == date(2026, 9, 23)
+        assert got["end"] == date(2026, 10, 5)
+        assert got["announced"] == date(2026, 9, 22)
+        assert got["market"] == "otc"
+
+    def test_帶重複處置字樣的算第二次(self) -> None:
+        # 上櫃沒有「處置措施」欄,重複處置寫在內容的文字裡。實測 36.8% 帶
+        # 這句話,和上市的 34% 第二次處置率互相印證
+        got = normalise(
+            self._row(處置內容="最近30個營業日內曾發布處置,又因連續3個營業日")
+        )
+        assert got is not None
+        assert got["nth"] == 2
+        assert got["measure"] == "第二次處置"
+
+    def test_沒有那句話的算第一次(self) -> None:
+        got = normalise(self._row())
+        assert got is not None
+        assert got["nth"] == 1
+
+    def test_累計那一欄不會被當成次數(self) -> None:
+        # 累計是相對查詢區間算的,換個區間就變。[#8] 把它當次數,算出 70%
+        # 的第二次處置率(真值 34%)
+        got = normalise(self._row(累計="12"))
+        assert got is not None
+        assert got["nth"] == 1
+
+    def test_期間格式不對回_None(self) -> None:
+        # 猜一個日期比少一筆事件糟得多
+        assert normalise(self._row(處置起訖時間="115/09/23")) is None
+
+    def test_日期解不出來回_None(self) -> None:
+        assert normalise(self._row(公布日期="爛資料")) is None
+        assert normalise(self._row(處置起訖時間="爛~資料")) is None
+
+    def test_結束早於開始回_None(self) -> None:
+        assert normalise(self._row(處置起訖時間="115/10/05~115/09/23")) is None
+
+    def test_同一天開始結束可以(self) -> None:
+        got = normalise(self._row(處置起訖時間="115/09/23~115/09/23"))
+        assert got is not None
+        assert got["start"] == got["end"]
