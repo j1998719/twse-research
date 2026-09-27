@@ -6,10 +6,14 @@ from datetime import date
 
 from src.tdcc import (
     BIG_BAND,
+    SNAPSHOT_BIG_LEVEL,
+    SNAPSHOT_TOTAL_LEVEL,
     Band,
     Week,
     parse_bands,
+    parse_snapshot,
     rising,
+    snapshot_day,
     weekly_changes,
 )
 
@@ -192,3 +196,63 @@ class TestRising:
             _week(date(2026, 1, 9), 48, 47.0),
         ]
         assert rising(weekly_changes(weeks)) == []
+
+
+#: 全市場快照的格式。代號有補齊的空白,分級 16 是差異數調整、17 是合計
+SNAPSHOT = (
+    "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n"
+    "20260924,3105  ,15,48,210689943,49.69\r\n"
+    "20260924,3105  ,16,0,0,0.00\r\n"
+    "20260924,3105  ,17,125535,423940384,100.00\r\n"
+    "20260924,2330  ,15,1234,20000000000,80.00\r\n"
+    "20260924,2330  ,17,500000,25000000000,100.00\r\n"
+)
+
+
+class TestParseSnapshot:
+    def test_代號的補齊空白會去掉(self) -> None:
+        # 不 strip 的話 "3105" 查不到任何東西 —— feed 裡是 "3105  "
+        assert set(parse_snapshot(SNAPSHOT)) == {"3105", "2330"}
+
+    def test_千張大戶讀得出來(self) -> None:
+        big = parse_snapshot(SNAPSHOT)["3105"][SNAPSHOT_BIG_LEVEL]
+        assert big == Band(people=48, shares=210_689_943, pct=49.69)
+
+    def test_合計固定在第十七級(self) -> None:
+        # 這個 feed 跟查詢頁不同:每一檔都剛好 17 列,合計不會位移
+        assert parse_snapshot(SNAPSHOT)["3105"][SNAPSHOT_TOTAL_LEVEL].people == 125_535
+
+    def test_跟查詢頁的數字對得上(self) -> None:
+        # 同一檔同一週,兩個來源必須一致,否則其中一個解析錯了
+        snap = parse_snapshot(SNAPSHOT)["3105"][SNAPSHOT_BIG_LEVEL]
+        page = parse_bands(PLAIN)[BIG_BAND]
+        assert (snap.people, snap.shares, snap.pct) == (
+            page.people,
+            page.shares,
+            page.pct,
+        )
+
+    def test_空檔案回空的字典(self) -> None:
+        assert parse_snapshot("") == {}
+
+    def test_欄位缺數字的列跳過(self) -> None:
+        broken = (
+            "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n"
+            "20260924,3105  ,15,,210689943,49.69\r\n"
+        )
+        assert parse_snapshot(broken) == {}
+
+
+class TestSnapshotDay:
+    def test_讀出資料日期(self) -> None:
+        assert snapshot_day(SNAPSHOT) == date(2026, 9, 24)
+
+    def test_空檔案回_None(self) -> None:
+        assert snapshot_day("") is None
+
+    def test_日期壞掉回_None_而不是猜今天(self) -> None:
+        broken = (
+            "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n"
+            "xxxx,3105  ,15,48,1,1.0\r\n"
+        )
+        assert snapshot_day(broken) is None

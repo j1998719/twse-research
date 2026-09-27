@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import csv
 import http.cookiejar
+import io
 import itertools
 import re
 import urllib.parse
@@ -23,6 +25,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 QRY_URL = "https://www.tdcc.com.tw/portal/zh/smWeb/qryStock"
+#: 全市場快照。一個請求就拿到所有股票,但只有最新一週
+SNAPSHOT_URL = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
 UA = {"User-Agent": "Mozilla/5.0"}
 
 #: 千張大戶那一級的級距文字(1,000,001 股以上)
@@ -191,3 +195,54 @@ def weekly_changes(weeks: Iterable[Week]) -> list[Change]:
 def rising(changes: Sequence[Change], min_people: int = 1) -> list[Change]:
     """人數增加到門檻以上的那些週,也就是「大戶開始變多」的候選事件。"""
     return [c for c in changes if c.people_delta >= min_people]
+
+
+# --- 全市場快照 ---
+#
+# 這個 feed 跟上面的查詢頁是兩套格式,不要混用假設:
+#  * 分級編號在這裡是固定的 —— 每一檔都剛好 17 列,16 永遠是差異數調整
+#    (沒有調整時就是 0),17 永遠是合計。查詢頁則是沒有調整那一列時合計變 16。
+#  * 證券代號有空白補齊("3105  "),不 strip 的話查不到任何一檔。
+#  * 涵蓋上市與上櫃(約 4,000 檔),比我們的價格資料(僅上市 1,127 檔)寬。
+
+#: 全市場快照裡,千張大戶固定是這一級
+SNAPSHOT_BIG_LEVEL = 15
+#: 合計固定是這一級
+SNAPSHOT_TOTAL_LEVEL = 17
+
+
+def parse_snapshot(text: str) -> dict[str, dict[int, Band]]:
+    """把全市場快照的 CSV 讀成「證券代號 -> 分級 -> 數字」。
+
+    代號會去掉補齊的空白。
+    """
+    out: dict[str, dict[int, Band]] = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        code = (row.get("證券代號") or "").strip()
+        level = _number(row.get("持股分級") or "")
+        people = _number(row.get("人數") or "")
+        shares = _number(row.get("股數") or "")
+        if not code or level is None or people is None or shares is None:
+            continue
+        pct = row.get("占集保庫存數比例%") or "0"
+        out.setdefault(code, {})[level] = Band(
+            people=people, shares=shares, pct=float(pct)
+        )
+    return out
+
+
+def snapshot_day(text: str) -> date | None:
+    """快照的資料日期。空檔案回 None。"""
+    for row in csv.DictReader(io.StringIO(text)):
+        stamp = (row.get("資料日期") or "").strip()
+        if len(stamp) == len("20260924") and stamp.isdigit():
+            return _as_date(stamp)
+    return None
+
+
+def fetch_snapshot() -> str:
+    """抓全市場快照的原始 CSV。一週一次就夠,只有最新一週。"""
+    req = urllib.request.Request(SNAPSHOT_URL, headers=UA)
+    with urllib.request.urlopen(req, timeout=180) as res:  # noqa: S310
+        body: bytes = res.read()
+    return body.decode("utf-8-sig", "replace")

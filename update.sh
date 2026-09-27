@@ -25,6 +25,11 @@ say "抓每日行情"
 say "抓三大法人"
 .venv/bin/python -m src.fetch_chips 2020-01-01 "$TODAY" >>"$LOG" 2>&1
 
+# 集保快照只有最新一週,錯過就永遠補不回來,所以放在算統計之前 ——
+# 就算後面的步驟壞了,這一週的股權分散還是存下來了。
+say "存集保股權分散快照"
+.venv/bin/python -m src.fetch_tdcc >>"$LOG" 2>&1
+
 say "算統計"
 .venv/bin/python -m src.build_report >>"$LOG" 2>&1
 
