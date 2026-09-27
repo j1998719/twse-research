@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from scipy import stats
@@ -258,3 +259,76 @@ def effective_n(items: Sequence[Observation]) -> int:
     股票一起漲跌,所以 14 筆來自同一週的觀察不是 14 個獨立樣本。
     """
     return len({item.period for item in items})
+
+
+def window_excess[DayT: SupportsAllComparisons](
+    series: dict[DayT, float],
+    closes: dict[str, dict[DayT, float]],
+    entry_day: DayT,
+    exit_day: DayT,
+    *,
+    costs: bool = True,
+) -> float | None:
+    """一個窗口的超額報酬。兩端任一邊找不到價格就回 None。
+
+    entry_day / exit_day 是「不早於這一天」—— 實際進出場是當天或之後最近的
+    交易日。基準是同一個窗口內整個宇集的買進持有等權報酬。
+    """
+    entry = first_on_or_after(series, entry_day)
+    out = first_on_or_after(series, exit_day)
+    if entry is None or out is None or entry[1] <= 0:
+        return None
+    bench = equal_weight_buy_and_hold(closes, entry[0], out[0])
+    if bench is None:
+        return None
+    stock = (out[1] / entry[1] - 1) * 100
+    if costs:
+        stock -= ROUND_TRIP_COST_PCT
+    return stock - bench
+
+
+def horizon_returns(
+    periods: Sequence[date],
+    series: dict[date, float],
+    closes: dict[str, dict[date, float]],
+    horizon: int,
+    lag: timedelta = timedelta(0),
+) -> list[float | None]:
+    """每個期間持有 horizon 個期間的超額報酬。算不出來的那一筆是 None。
+
+    periods 是事件期間的序列(例如集保的週次日期)。持有期是用「幾個期間」
+    算的,不是固定天數 —— 期間序列本身有缺口時(集保農曆年那一週就沒有
+    資料),實際天數會跟著變長,呼叫端要知道這件事。
+
+    lag 是資料公布的時滯,同時加在進場和出場上。兩端都加才是同樣長度的
+    持有期;只加在進場那一端會讓每一筆的持有期都短一截。
+    """
+    out: list[float | None] = []
+    for i, period in enumerate(periods):
+        if i + horizon >= len(periods):
+            out.append(None)
+            continue
+        out.append(
+            window_excess(series, closes, period + lag, periods[i + horizon] + lag)
+        )
+    return out
+
+
+def direction_split(
+    values: Sequence[float | None],
+) -> tuple[list[int], list[int]]:
+    """把序列分成「比上一期高」和「沒有比上一期高」的位置。
+
+    回傳 (上升, 沒上升)。第一期沒有前一期可比,兩邊都不會出現它 ——
+    當成「沒上升」會把一筆無從判斷的觀察塞進對照組。
+
+    任一邊是 None(那一期算不出指標)就整個位置跳過,兩邊都不放。
+    """
+    up: list[int] = []
+    down: list[int] = []
+    for i in range(1, len(values)):
+        now, before = values[i], values[i - 1]
+        if now is None or before is None:
+            continue
+        (up if now > before else down).append(i)
+    return up, down

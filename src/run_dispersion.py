@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.dispersion import DROP_PP, LOOKBACK, Signal, signals, triggered
+from src.dispersion import DROP_PP, LOOKBACK, signals, triggered
 from src.eventstats import (
     Comparison,
     Observation,
@@ -23,11 +23,9 @@ from src.eventstats import (
     compare,
     demean_by_period,
     effective_n,
-    equal_weight_buy_and_hold,
-    first_on_or_after,
+    horizon_returns,
     non_overlapping,
 )
-from src.market import ROUND_TRIP_COST_PCT
 from src.tdcc import Band, Week
 
 
@@ -100,7 +98,9 @@ def main() -> int:
             continue
         sigs = signals(sorted(load_weeks(code), key=lambda w: w.day))
         for horizon in HORIZONS:
-            rets = _returns(sigs, series, closes, horizon)
+            rets = horizon_returns(
+                [s.day for s in sigs], series, closes, horizon, PUBLISH_LAG
+            )
             for name in SIGNALS:
                 fired = set(triggered(sigs, name))
                 hit = [i for i, s in enumerate(sigs) if s in fired]
@@ -143,22 +143,6 @@ def _report(
     _print_table(results)
 
 
-def _returns(
-    sigs: list[Signal],
-    series: dict[date, float],
-    closes: dict[str, dict[date, float]],
-    horizon: int,
-) -> list[float | None]:
-    """每個訊號週次持有 horizon 週的超額報酬。算不出來的是 None。"""
-    days = [s.day for s in sigs]
-    return [
-        _excess(series, closes, day, days[i + horizon])
-        if i + horizon < len(days)
-        else None
-        for i, day in enumerate(days)
-    ]
-
-
 def _print_table(results: list[Comparison]) -> None:
     """九個檢定的結果表。"""
     print(
@@ -168,39 +152,16 @@ def _print_table(results: list[Comparison]) -> None:
     )
     scored = adjust(results)
     for got, adjusted in scored:
-        name, horizon = got.name.rsplit("/", 1)
+        label, weeks = got.name.rsplit("/", 1)
         mark = " <-" if adjusted < ALPHA else ""
         print(
-            f"{name:20}{horizon.replace('週', ''):>3}{got.n_event:>6}"
+            f"{label:20}{weeks.replace('週', ''):>3}{got.n_event:>6}"
             f"{got.n_control:>6}{got.median_event:>+8.1f}%"
             f"{got.median_control:>+8.1f}%{got.win_rate_event:>8.0%}"
             f"{got.win_rate_control:>9.0%}{got.pvalue:>8.3f}{adjusted:>8.3f}{mark}"
         )
     hits = sum(1 for _, a in scored if a < ALPHA)
     print(f"\n{len(results)} 個檢定,FDR 校正後顯著:{hits} 個")
-
-
-def _excess(
-    series: dict[date, float],
-    closes: dict[str, dict[date, float]],
-    day: date,
-    exit_day: date,
-) -> float | None:
-    """資料日期 + 時滯之後進場,持有到出場週的同一個時滯點。
-
-    基準是同一個窗口內整個宇集的買進持有等權報酬 —— 不是把每日再平衡指數
-    的兩個點相除。個股這一邊是買進持有,基準也必須是,不然 13 週的窗口上
-    會有約 1 個百分點的固定偏差。
-    """
-    entry = first_on_or_after(series, day + PUBLISH_LAG)
-    out = first_on_or_after(series, exit_day + PUBLISH_LAG)
-    if entry is None or out is None:
-        return None
-    bench = equal_weight_buy_and_hold(closes, entry[0], out[0])
-    if bench is None:
-        return None
-    stock = (out[1] / entry[1] - 1) * 100 - ROUND_TRIP_COST_PCT
-    return stock - bench
 
 
 def _print_periods(pooled: dict[tuple[str, int], list[Observation]]) -> None:

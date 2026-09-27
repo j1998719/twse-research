@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+from datetime import date, timedelta
 
 import pytest
 
@@ -14,15 +15,23 @@ from src.eventstats import (
     compare,
     contemporaneous,
     demean_by_period,
+    direction_split,
     effective_n,
     equal_weight_buy_and_hold,
     equal_weight_index,
     excess_return,
     first_on_or_after,
+    horizon_returns,
     median,
     non_overlapping,
+    window_excess,
 )
 from src.market import ROUND_TRIP_COST_PCT
+
+
+def D(n: int) -> date:
+    """第 n 天。用真的 date,因為 horizon_returns 要跟 timedelta 相加。"""
+    return date(2026, 1, n)
 
 
 class TestEqualWeightIndex:
@@ -380,3 +389,130 @@ class TestEffectiveN:
 
     def test_空輸入是零(self) -> None:
         assert effective_n([]) == 0
+
+
+class TestWindowExcess:
+    """個股對宇集買進持有等權的超額報酬。"""
+
+    closes = {
+        "a": {D(1): 100.0, D(2): 110.0, D(3): 120.0},
+        "b": {D(1): 100.0, D(2): 100.0, D(3): 100.0},
+    }
+
+    def test_贏基準的部分(self) -> None:
+        # a 從 100 到 120 = +20%;基準是 a 和 b 的平均 = +10%
+        got = window_excess(self.closes["a"], self.closes, D(1), D(3), costs=False)
+        assert got == pytest.approx(10.0)
+
+    def test_輸基準是負的(self) -> None:
+        got = window_excess(self.closes["b"], self.closes, D(1), D(3), costs=False)
+        assert got == pytest.approx(-10.0)
+
+    def test_成本只扣個股那一邊(self) -> None:
+        plain = window_excess(self.closes["a"], self.closes, D(1), D(3), costs=False)
+        costed = window_excess(self.closes["a"], self.closes, D(1), D(3))
+        assert plain is not None
+        assert costed is not None
+        assert plain - costed == pytest.approx(ROUND_TRIP_COST_PCT)
+
+    def test_指定的日期沒開盤就用之後最近的(self) -> None:
+        sparse = {D(1): 100.0, D(5): 120.0}
+        closes = {"x": sparse}
+        got = window_excess(sparse, closes, D(2), D(4), costs=False)
+        # 進場滑到 D(5)、出場也滑到 D(5),同一天進出 = 0%
+        assert got == pytest.approx(0.0)
+
+    def test_出場日之後沒有價格就回_None(self) -> None:
+        got = window_excess(self.closes["a"], self.closes, D(1), D(9))
+        assert got is None
+
+    def test_基準算不出來時回_None_而不是當成零(self) -> None:
+        # 當成 0 會把個股的原始報酬誤報成超額報酬
+        lonely = {D(1): 100.0, D(9): 200.0}
+        got = window_excess(lonely, {"x": lonely}, D(1), D(9))
+        assert got is not None  # 自己就是宇集,算得出來
+        got2 = window_excess(lonely, {"y": {D(1): 1.0}}, D(1), D(9))
+        assert got2 is None
+
+
+class TestHorizonReturns:
+    periods = [D(1), D(2), D(3), D(4), D(5)]
+    series = {D(i): float(100 + 10 * i) for i in range(1, 6)}
+    closes = {"a": series, "b": dict.fromkeys(series, 100.0)}
+
+    def test_每一筆都是持有_horizon_個期間(self) -> None:
+        got = horizon_returns(self.periods, self.series, self.closes, 2)
+        # 前三筆算得出來(0→2、1→3、2→4),後兩筆沒有出場期間
+        assert [v is not None for v in got] == [True, True, True, False, False]
+
+    def test_出場期間不存在時是_None_而不是用最後一筆(self) -> None:
+        # 用最後一筆會讓持有期悄悄縮短,而且看不出來。
+        # 5 個期間、持有 4 期:只有第 0 筆有出場期間(0→4),其餘都是 None
+        got = horizon_returns(self.periods, self.series, self.closes, 4)
+        assert [v is not None for v in got] == [True, False, False, False, False]
+
+    def test_持有期超過期間總數時全部是_None(self) -> None:
+        got = horizon_returns(self.periods, self.series, self.closes, 5)
+        assert got == [None] * 5
+
+    def test_持有期越長算得出來的筆數越少(self) -> None:
+        counts = [
+            sum(
+                v is not None
+                for v in horizon_returns(self.periods, self.series, self.closes, h)
+            )
+            for h in (1, 2, 3)
+        ]
+        assert counts == [4, 3, 2]
+
+    def test_時滯同時加在兩端(self) -> None:
+        # 只加在進場那一端的話持有期會短一截
+        no_lag = horizon_returns(self.periods, self.series, self.closes, 2)
+        lagged = horizon_returns(
+            self.periods, self.series, self.closes, 2, lag=timedelta(days=1)
+        )
+        # 兩者的持有期長度一樣,只是整段往後移
+        assert sum(v is not None for v in lagged) <= sum(v is not None for v in no_lag)
+
+    def test_期間序列有缺口時持有期會變長(self) -> None:
+        # 集保農曆年那一週沒資料,跨過缺口的窗口實際天數會多
+        gappy = [D(1), D(2), D(20), D(21)]
+        got = horizon_returns(gappy, self.series, self.closes, 1)
+        assert len(got) == 4
+
+
+class TestDirectionSplit:
+    def test_上升與下降分開(self) -> None:
+        up, down = direction_split([1.0, 2.0, 1.5, 3.0])
+        assert up == [1, 3]
+        assert down == [2]
+
+    def test_第一期兩邊都不出現(self) -> None:
+        # 當成「沒上升」會把一筆無從判斷的觀察塞進對照組
+        up, down = direction_split([1.0, 2.0])
+        assert 0 not in up
+        assert 0 not in down
+
+    def test_持平算沒上升(self) -> None:
+        up, down = direction_split([1.0, 1.0])
+        assert up == []
+        assert down == [1]
+
+    def test_None_的位置兩邊都不放(self) -> None:
+        up, down = direction_split([1.0, None, 3.0, 4.0])
+        # 位置 1 自己是 None,位置 2 的前一期是 None,兩個都跳過
+        assert up == [3]
+        assert down == []
+
+    def test_兩邊加起來不會超過總數減一(self) -> None:
+        values: list[float | None] = [1.0, 2.0, None, 4.0, 5.0]
+        up, down = direction_split(values)
+        assert len(up) + len(down) <= len(values) - 1
+
+    def test_位置不會重複出現在兩邊(self) -> None:
+        up, down = direction_split([1.0, 2.0, 1.0, 2.0, 2.0])
+        assert not set(up) & set(down)
+
+    def test_空序列與單一元素都回空(self) -> None:
+        assert direction_split([]) == ([], [])
+        assert direction_split([1.0]) == ([], [])
