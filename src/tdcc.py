@@ -156,6 +156,85 @@ def fetch_week(day: date, code: str) -> Week:
     return Week(day=day, code=code, bands=parse_bands(body))
 
 
+# --- 集中度 ---
+#
+# 千張這個門檻跨股不可比:同樣持有 1,000 張,在台積電是股本的 0.0039%,
+# 在中位數的公司是 1.285%,差 83 倍(5%-95% 區間)。集中度指標只吃比例,
+# 所以尺度無關。
+#
+# 但沒有個人層級的持股資料,只有級距,所以得假設同一級距內每個人持股相同。
+
+
+def _holdings(week: Week) -> list[tuple[int, float]]:
+    """每個級距的 (人數, 佔全體的比例)。合計那一列和空級距都排除。"""
+    return [
+        (band.people, band.pct / 100)
+        for key, band in week.bands.items()
+        if key != "total" and band.people > 0 and band.pct > 0
+    ]
+
+
+def herfindahl(week: Week) -> float | None:
+    """股權集中度(HHI)。抓不到任何級距時回 None。
+
+    假設同一級距內每個人持股相同,所以每人佔比是「該級佔比 / 該級人數」:
+
+        HHI = Σ 該級人數 × (該級佔比 / 該級人數)² = Σ (該級佔比)² / 該級人數
+
+    級距內均分會讓平方和最小(Jensen),所以這是真實 HHI 的**下界** ——
+    是個保守估計。
+
+    注意這個數字會被最高的級距主導(穩懋是 97.4% 來自千張以上那一級),
+    所以它擺脫了「張數」這個絕對量,但沒有完全擺脫級距邊界。要看整條
+    分布的話用 gini()。
+    """
+    parts = _holdings(week)
+    if not parts:
+        return None
+    return sum(pct * pct / people for people, pct in parts)
+
+
+def effective_holders(week: Week) -> float | None:
+    """等效持有人數 = 1 / HHI。
+
+    「如果股權由 N 個人平分,集中度會一樣」的那個 N。比 HHI 好讀:
+    穩懋有 125,535 個股東,但等效持有人數只有 189 人。
+    """
+    hhi = herfindahl(week)
+    if hhi is None or hhi <= 0:
+        return None
+    return 1 / hhi
+
+
+def gini(week: Week) -> float | None:
+    """股權分配的 Gini 係數,0 是完全平均、1 是完全集中。
+
+    用級距的 Lorenz 曲線梯形法算。跟 HHI 不同,權重分布在整條曲線上,
+    不會被單一級距吃掉 —— 所以對級距邊界的敏感度低得多。
+
+    級距要由小排到大,用「該級平均每人持股」排序,而不是用級距編號 ——
+    編號的順序在兩個來源之間不一致(見檔頭)。
+    """
+    parts = _holdings(week)
+    if not parts:
+        return None
+    parts.sort(key=lambda x: x[1] / x[0])
+    total_people = sum(people for people, _ in parts)
+    if total_people == 0:
+        return None
+    cum_people = 0.0
+    cum_share = 0.0
+    area = 0.0
+    for people, pct in parts:
+        next_people = cum_people + people / total_people
+        next_share = cum_share + pct
+        # 梯形面積:寬 × 兩邊高的平均
+        area += (next_people - cum_people) * (next_share + cum_share)
+        cum_people, cum_share = next_people, next_share
+    # cum_share 理論上是 1,但集保的佔比是四捨五入過的,所以正規化一次
+    return 1 - area / cum_share if cum_share > 0 else None
+
+
 @dataclass(frozen=True)
 class Change:
     """相鄰兩週之間,千張大戶的變化。"""

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from src.tdcc import (
     BIG_BAND,
     SNAPSHOT_BIG_LEVEL,
     SNAPSHOT_TOTAL_LEVEL,
     Band,
     Week,
+    effective_holders,
+    gini,
+    herfindahl,
     parse_bands,
     parse_snapshot,
     rising,
@@ -256,3 +261,116 @@ class TestSnapshotDay:
             "xxxx,3105  ,15,48,1,1.0\r\n"
         )
         assert snapshot_day(broken) is None
+
+
+def _bands(*parts: tuple[int, int]) -> Week:
+    """用 (人數, 股數) 造一週資料,佔比自動算。"""
+    total = sum(shares for _, shares in parts)
+    bands = {
+        f"band{i}": Band(people=people, shares=shares, pct=shares / total * 100)
+        for i, (people, shares) in enumerate(parts)
+    }
+    bands["total"] = Band(people=sum(p for p, _ in parts), shares=total, pct=100.0)
+    return Week(day=date(2026, 9, 24), code="9999", bands=bands)
+
+
+class TestHerfindahl:
+    def test_平分時等於一除以人數(self) -> None:
+        # 10 個人各持 10%:HHI = 10 × 0.01 = 0.1
+        assert herfindahl(_bands((10, 1_000))) == pytest.approx(0.1)
+
+    def test_一個人全拿時是一(self) -> None:
+        assert herfindahl(_bands((1, 1_000))) == pytest.approx(1.0)
+
+    def test_越集中數字越大(self) -> None:
+        spread = _bands((100, 500), (100, 500))
+        tight = _bands((2, 900), (100, 100))
+        assert herfindahl(tight) > herfindahl(spread)
+
+    def test_合計那一列不算進去(self) -> None:
+        # 算進去的話會多一個 100% 的級距,HHI 直接爆掉
+        assert herfindahl(_bands((10, 1_000))) == pytest.approx(0.1)
+
+    def test_人數為零的級距跳過而不是除以零(self) -> None:
+        week = _bands((10, 1_000))
+        week.bands["empty"] = Band(people=0, shares=0, pct=0.0)
+        assert herfindahl(week) == pytest.approx(0.1)
+
+    def test_沒有級距時回_None(self) -> None:
+        assert herfindahl(Week(day=date(2026, 9, 24), code="x", bands={})) is None
+
+    def test_尺度無關_股數放大一千倍結果不變(self) -> None:
+        # 這是用集中度取代千張門檻的全部理由
+        small = herfindahl(_bands((5, 300), (50, 700)))
+        big = herfindahl(_bands((5, 300_000), (50, 700_000)))
+        assert small == pytest.approx(big)
+
+
+class TestEffectiveHolders:
+    def test_平分時就是實際人數(self) -> None:
+        assert effective_holders(_bands((10, 1_000))) == pytest.approx(10)
+
+    def test_集中時遠少於實際人數(self) -> None:
+        # 2 個人拿 90%,100 個人分 10%
+        week = _bands((2, 900), (100, 100))
+        got = effective_holders(week)
+        assert got is not None
+        assert got < 10
+        assert week.holders == 102
+
+    def test_沒有級距時回_None(self) -> None:
+        assert (
+            effective_holders(Week(day=date(2026, 9, 24), code="x", bands={})) is None
+        )
+
+
+class TestGini:
+    def test_完全平均是零(self) -> None:
+        assert gini(_bands((10, 1_000))) == pytest.approx(0.0, abs=1e-9)
+
+    def test_越集中越接近一(self) -> None:
+        assert gini(_bands((1, 999), (999, 1))) > 0.9
+
+    def test_集中度上升時變大(self) -> None:
+        spread = _bands((100, 500), (100, 500))
+        tight = _bands((2, 900), (100, 100))
+        assert gini(tight) > gini(spread)
+
+    def test_尺度無關(self) -> None:
+        small = gini(_bands((5, 300), (50, 700)))
+        big = gini(_bands((5, 300_000), (50, 700_000)))
+        assert small == pytest.approx(big)
+
+    def test_級距順序打亂結果一樣(self) -> None:
+        # 內部要自己由小排到大,不能靠傳進來的順序
+        a = gini(_bands((2, 900), (100, 100)))
+        b = gini(_bands((100, 100), (2, 900)))
+        assert a == pytest.approx(b)
+
+    def test_落在零到一之間(self) -> None:
+        for week in [
+            _bands((10, 1_000)),
+            _bands((1, 999), (999, 1)),
+            _bands((2, 900), (100, 100)),
+        ]:
+            got = gini(week)
+            assert got is not None
+            assert 0 <= got <= 1
+
+    def test_沒有級距時回_None(self) -> None:
+        assert gini(Week(day=date(2026, 9, 24), code="x", bands={})) is None
+
+    def test_佔比被四捨五入過也不會跑出範圍(self) -> None:
+        # 集保的佔比只有兩位小數,加起來不一定剛好 100
+        week = Week(
+            day=date(2026, 9, 24),
+            code="9999",
+            bands={
+                "a": Band(people=48, shares=210_689_943, pct=49.69),
+                "b": Band(people=125_487, shares=213_250_441, pct=50.30),
+                "total": Band(people=125_535, shares=423_940_384, pct=100.0),
+            },
+        )
+        got = gini(week)
+        assert got is not None
+        assert 0 <= got <= 1
