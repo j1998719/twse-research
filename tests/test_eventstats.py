@@ -466,19 +466,34 @@ class TestHorizonReturns:
         assert counts == [4, 3, 2]
 
     def test_時滯同時加在兩端(self) -> None:
-        # 只加在進場那一端的話持有期會短一截
-        no_lag = horizon_returns(self.periods, self.series, self.closes, 2)
+        # 只加在進場那一端的話持有期會短一截。原本這裡只斷言「算得出來的筆數
+        # 沒變多」,把那個 bug 植進去照樣會過 —— 要直接比對用到的價格。
         lagged = horizon_returns(
             self.periods, self.series, self.closes, 2, lag=timedelta(days=1)
         )
-        # 兩者的持有期長度一樣,只是整段往後移
-        assert sum(v is not None for v in lagged) <= sum(v is not None for v in no_lag)
+        # periods[0] + 1 天 = D(2),出場 periods[2] + 1 天 = D(4)
+        assert lagged[0] == pytest.approx(
+            window_excess(self.series, self.closes, D(2), D(4))
+        )
+
+    def test_只把時滯加在進場端會被抓到(self) -> None:
+        # 上面那個測試要防的就是這個錯:出場不加時滯,持有期少一天
+        lagged = horizon_returns(
+            self.periods, self.series, self.closes, 2, lag=timedelta(days=1)
+        )
+        wrong = window_excess(self.series, self.closes, D(2), D(3))
+        assert lagged[0] != pytest.approx(wrong)
 
     def test_期間序列有缺口時持有期會變長(self) -> None:
-        # 集保農曆年那一週沒資料,跨過缺口的窗口實際天數會多
-        gappy = [D(1), D(2), D(20), D(21)]
+        # 集保農曆年那一週沒資料,跨過缺口的窗口實際天數會多。
+        # 只斷言長度的話,回傳 [None]*n 的爛實作也會過 —— 要比對實際用到的
+        # 是缺口兩側的價格。
+        gappy = [D(2), D(3), D(20)]
         got = horizon_returns(gappy, self.series, self.closes, 1)
-        assert len(got) == 4
+        # 第 1 筆是 D(3) → D(20),跨了 17 天而不是 1 天
+        assert got[1] == pytest.approx(
+            window_excess(self.series, self.closes, D(3), D(20))
+        )
 
 
 class TestDirectionSplit:

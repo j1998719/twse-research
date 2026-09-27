@@ -9,13 +9,13 @@
 
 from __future__ import annotations
 
-import json
-from datetime import date, timedelta
-from pathlib import Path
-
-import pandas as pd
-
 from src.dispersion import DROP_PP, LOOKBACK, signals, triggered
+from src.eventdata import (
+    PUBLISH_LAG,
+    available_codes,
+    load_closes,
+    load_weeks,
+)
 from src.eventstats import (
     Comparison,
     Observation,
@@ -26,13 +26,8 @@ from src.eventstats import (
     horizon_returns,
     non_overlapping,
 )
-from src.tdcc import Band, Week
 
 
-HISTORY = Path("data/raw/tdcc/history")
-PRICES = Path("data/out/prices.csv")
-#: 集保資料日期到實際可交易之間的時滯。進場不能早於這個
-PUBLISH_LAG = timedelta(days=5)
 #: 事前登記的持有期,單位是週。
 #:
 #: 注意這是「幾個集保週次」而不是固定天數:集保在農曆年那一週沒有資料
@@ -47,42 +42,10 @@ ALPHA = 0.05
 MIN_STOCKS = 3
 
 
-def load_weeks(code: str) -> list[Week]:
-    """把抓下來的 JSON 還原成 Week。"""
-    raw = json.loads((HISTORY / f"{code}.json").read_text(encoding="utf-8"))
-    return [
-        Week(
-            day=date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:])),
-            code=code,
-            bands={key: Band(**vals) for key, vals in bands.items()},
-        )
-        for stamp, bands in raw.items()
-    ]
-
-
-def load_closes(codes: set[str]) -> dict[str, dict[date, float]]:
-    """讀本地收盤價。基準要用整個宇集,所以不只讀樣本那幾檔。"""
-    frame = pd.read_csv(PRICES, dtype={"code": str}, usecols=["day", "code", "close"])
-    frame = frame[frame["day"] >= "2025-08-01"]
-    out: dict[str, dict[date, float]] = {}
-    for code, group in frame.groupby("code"):
-        if code not in codes:
-            continue
-        out[str(code)] = {
-            date.fromisoformat(d): float(c)
-            for d, c in zip(group["day"], group["close"], strict=True)
-            if pd.notna(c) and c > 0
-        }
-    return out
-
-
 def main() -> int:
     """跑完 9 個檢定,把結果印出來。"""
-    codes = sorted(p.stem for p in HISTORY.glob("*.json"))
-    universe = set(
-        pd.read_csv(PRICES, dtype={"code": str}, usecols=["code"])["code"].unique()
-    )
-    closes = load_closes(universe)
+    codes = available_codes()
+    closes = load_closes()
     print(f"樣本 {len(codes)} 檔,基準用 {len(closes)} 檔逐窗口買進持有等權")
     print(f"回看 {LOOKBACK} 週、回落 {DROP_PP} 個百分點,持有期 {HORIZONS} 週\n")
 
@@ -96,7 +59,7 @@ def main() -> int:
         if not series:
             print(f"  {code}: 沒有價格資料,跳過")
             continue
-        sigs = signals(sorted(load_weeks(code), key=lambda w: w.day))
+        sigs = signals(load_weeks(code))
         for horizon in HORIZONS:
             rets = horizon_returns(
                 [s.day for s in sigs], series, closes, horizon, PUBLISH_LAG
@@ -140,6 +103,12 @@ def _report(
         if got is not None:
             results.append(got)
     print(f"\n=== {title} ===")
+    if demean:
+        # direction_split 把整個橫斷面切成上升/沒上升兩邊,所以每一期扣掉的
+        # 是「兩組聯集」的中位數 —— 兩組的中位數會依構造對稱地落在 0 兩側,
+        # 勝率也會被推向 50%。這幾欄在這一輪不能當幅度讀,只有 p 值有意義
+        # (Mann-Whitney 用的是等級,期間內的平移不影響它)。
+        print("  註:去期間化之後,中位數與勝率依構造會靠近 0 與 50%,只看 p 值")
     _print_table(results)
 
 
