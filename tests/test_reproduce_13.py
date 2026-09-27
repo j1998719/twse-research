@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 
 from src.backtest import pre_release_run, trading_days
+from src.events.disposition import events as disposition_events
 from src.market import index_series
 from src.study import Event, Window, one_sample, resolve_window
 
@@ -125,3 +126,39 @@ def test_偷看未來的事件被框架自己擋掉(reproduced: dict) -> None:
     """
     assert reproduced["blocked"] > 0
     assert reproduced["blocked"] == reproduced["expected_blocked"]
+
+
+@pytest.fixture(scope="module")
+def via_adapter() -> dict[str, int]:
+    """完全走轉接層的事件篩選,不在測試裡手刻。"""
+    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
+    punishes = pd.read_csv(
+        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
+    )
+    runs = pre_release_run(
+        punishes[punishes.nth > 0],
+        prices,
+        index_series(RAW / "prices"),
+        all_punishes=punishes,
+    )
+    events = disposition_events(runs)
+    days = sorted(day.date() for day in trading_days(prices))
+    passed = [e for e in events if resolve_window(e, days, PRE_RELEASE) is not None]
+    return {
+        "all": len(events),
+        "knowable": len(passed),
+        "clean": sum(1 for e in passed if e.tags["truly_released"]),
+        "expected": int(
+            (runs.knowable & runs.truly_released & runs.excess.notna()).sum()
+        ),
+    }
+
+
+def test_轉接層加框架篩出的事件和舊管線一致(via_adapter: dict) -> None:
+    """轉接層決定 knowable,框架擋掉進場過早的 —— 兩段合起來要等於舊管線。"""
+    assert via_adapter["clean"] == via_adapter["expected"]
+
+
+def test_框架擋掉的偷看未來事件數看得出來(via_adapter: dict) -> None:
+    """[#13] 當初找到的 look-ahead 筆數,現在是框架自己擋下來的。"""
+    assert via_adapter["all"] - via_adapter["knowable"] == 31
