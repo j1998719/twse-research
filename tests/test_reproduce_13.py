@@ -18,7 +18,9 @@ import pandas as pd
 import pytest
 
 from src.backtest import pre_release_run, trading_days
+from src.eventdata import load_closes
 from src.events.disposition import events as disposition_events
+from src.eventstats import window_excess
 from src.market import index_series
 from src.study import Event, Window, one_sample, resolve_window
 
@@ -166,3 +168,75 @@ def test_轉接層加框架篩出的事件和舊管線一致(via_adapter: dict) 
 def test_框架擋掉的偷看未來事件數看得出來(via_adapter: dict) -> None:
     """[#13] 當初找到的 look-ahead 筆數,現在是框架自己擋下來的。"""
     assert via_adapter["all"] - via_adapter["knowable"] == 31
+
+
+@pytest.fixture(scope="module")
+def both_benchmarks() -> dict[str, float]:
+    """同一組事件,用兩種基準各算一次。
+
+    舊管線用市值加權的加權指數,而且是每日再平衡的水位相除;框架主張基準要
+    和個股同一種持有方式(等權買進持有),理由寫在 eventstats 裡。招牌數字
+    到底吃不吃這個差別,要算出來才知道。
+    """
+    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
+    punishes = pd.read_csv(
+        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
+    )
+    runs = pre_release_run(
+        punishes[punishes.nth > 0],
+        prices,
+        index_series(RAW / "prices"),
+        all_punishes=punishes,
+    )
+    events = [
+        e
+        for e in disposition_events(runs)
+        if e.tags["truly_released"] and e.tags["has_excess"]
+    ]
+    days = sorted(day.date() for day in trading_days(prices))
+    closes = load_closes(since="2019-12-01")
+
+    old: list[float] = []
+    new: list[float] = []
+    for event in events:
+        span = resolve_window(event, days, PRE_RELEASE)
+        if span is None or event.code not in closes:
+            continue
+        got = window_excess(closes[event.code], closes, *span)
+        if got is None:
+            continue
+        old.append(float(event.tags["old_excess"]))  # type: ignore[arg-type]
+        new.append(got)
+    return {
+        "n": len(old),
+        "old_median": round(one_sample(old)[0], 2),
+        "new_median": round(one_sample(new)[0], 2),
+        "old_win": round(sum(1 for v in old if v > 0) / len(old) * 100, 1),
+        "new_win": round(sum(1 for v in new if v > 0) / len(new) * 100, 1),
+        "new_p": one_sample(new)[1],
+    }
+
+
+def test_兩種基準配到同一組事件(both_benchmarks: dict) -> None:
+    assert both_benchmarks["n"] == 951
+
+
+def test_換成框架的基準結論不變(both_benchmarks: dict) -> None:
+    """方向要一致,而且要一樣顯著。
+
+    這個測試把**報酬的定義**釘住。原本只比對統計量的話,改掉基準或拿掉交易
+    成本,report.json 和重算的那一邊會一起移動,沒有任何測試會發現。
+    """
+    assert both_benchmarks["new_median"] > 0
+    assert both_benchmarks["new_p"] < 0.0001
+    assert both_benchmarks["new_win"] > 50
+
+
+def test_兩種基準的差距不大(both_benchmarks: dict) -> None:
+    """實測 +1.65% vs +2.00% —— 基準的選擇不是這個發現的來源。
+
+    差距擴大到 1 個百分點以上就要回頭查:那代表結論開始依賴基準怎麼算,
+    而不是事件本身。
+    """
+    gap = both_benchmarks["new_median"] - both_benchmarks["old_median"]
+    assert abs(gap) < 1.0

@@ -40,6 +40,7 @@ def events(punishes: pd.DataFrame) -> list[Event]:
                 # 舊管線算得出超額報酬嗎。框架自己會算,但比對的時候
                 # 兩邊的條件要一致
                 "has_excess": row.get("excess") == row.get("excess"),
+                "old_excess": row.get("excess"),
             },
         )
         for row in punishes.to_dict("records")
