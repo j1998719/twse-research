@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import date  # noqa: TC003 - Quote 的欄位在 runtime 也要它
@@ -24,6 +25,7 @@ from src.prices import to_float
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
 UA = {"User-Agent": "Mozilla/5.0"}
 QUOTES_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc"
@@ -122,6 +124,34 @@ def parse_quotes(payload: dict[str, Any], day: date) -> list[Quote]:
 def fetch_quotes(day: date) -> dict[str, Any]:
     """抓一天的全櫃買行情。非交易日會回一張空表,不是錯誤。"""
     return _fetch(QUOTES_URL, f"date={roc(day)}&type=EW")
+
+
+def cached_quotes(
+    day: date, cache_dir: Path, *, pause: float = 1.0
+) -> dict[str, Any] | None:
+    """抓一天並存快取。非交易日回 None,而且**空檔案也會留下**。
+
+    留空檔案是為了讓非交易日也算「處理過」—— 不留的話每次重跑都會再問一次
+    那些永遠沒有資料的日子,七年下來是幾百個白費的請求。
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"otc_{day:%Y%m%d}.json"
+    if cached.exists():
+        raw = cached.read_text(encoding="utf-8")
+        if not raw.strip():
+            return None
+        hit: dict[str, Any] = json.loads(raw)
+        return hit
+
+    payload = fetch_quotes(day)
+    _fields, data = _rows(payload)
+    if not data:
+        cached.write_text("", encoding="utf-8")
+        time.sleep(pause)
+        return None
+    cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    time.sleep(pause)
+    return payload
 
 
 def fetch_disposals(start: date, end: date) -> dict[str, Any]:

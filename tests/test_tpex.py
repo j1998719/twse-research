@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import TYPE_CHECKING
 
 import pytest
 
 from src.tpex import (
+    cached_quotes,
     is_common_stock,
     parse_disposals,
     parse_quotes,
     roc,
 )
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _quote_row(code: str, close: str = "497.00") -> list[str]:
+    """一列行情。給快取的測試用,不必造一整個 class。"""
+    return [code, "某檔", close, "+1.0", "507.00", "518.00", "486.50", "26998000", "1"]
 
 
 class TestIsCommonStock:
@@ -185,3 +196,62 @@ class TestParseDisposals:
     def test_欄位變了要出錯(self) -> None:
         with pytest.raises(ValueError, match="欄位變了"):
             list(parse_disposals(_payload(["編號", "公布日期"], [["1", "115/09/23"]])))
+
+
+class TestCachedQuotes:
+    """抓過的日子要跳過,非交易日也算抓過。"""
+
+    def test_第一次會抓並存檔(self, tmp_path: Path, monkeypatch) -> None:
+        calls = []
+
+        def fake(day: date) -> dict:
+            calls.append(day)
+            return _payload(QUOTE_FIELDS, [_quote_row("3105")])
+
+        monkeypatch.setattr("src.tpex.fetch_quotes", fake)
+        got = cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
+        assert got is not None
+        assert calls == [date(2026, 9, 23)]
+        assert (tmp_path / "otc_20260923.json").exists()
+
+    def test_第二次讀快取不再抓(self, tmp_path: Path, monkeypatch) -> None:
+        calls = []
+
+        def fake(day: date) -> dict:
+            calls.append(day)
+            return _payload(QUOTE_FIELDS, [_quote_row("3105")])
+
+        monkeypatch.setattr("src.tpex.fetch_quotes", fake)
+        cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
+        cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
+        assert len(calls) == 1
+
+    def test_非交易日回_None_但留一個空檔案(self, tmp_path: Path, monkeypatch) -> None:
+        # 不留空檔案的話,每次重跑都會再問一次那些永遠沒資料的日子 ——
+        # 七年下來是幾百個白費的請求
+        monkeypatch.setattr(
+            "src.tpex.fetch_quotes", lambda _: _payload(QUOTE_FIELDS, [])
+        )
+        got = cached_quotes(date(2026, 9, 27), tmp_path, pause=0)
+        assert got is None
+        assert (tmp_path / "otc_20260927.json").read_text(encoding="utf-8") == ""
+
+    def test_快取到的非交易日不會再抓(self, tmp_path: Path, monkeypatch) -> None:
+        calls = []
+
+        def fake(day: date) -> dict:
+            calls.append(day)
+            return _payload(QUOTE_FIELDS, [])
+
+        monkeypatch.setattr("src.tpex.fetch_quotes", fake)
+        cached_quotes(date(2026, 9, 27), tmp_path, pause=0)
+        cached_quotes(date(2026, 9, 27), tmp_path, pause=0)
+        assert len(calls) == 1
+
+    def test_快取的內容讀回來和抓到的一樣(self, tmp_path: Path, monkeypatch) -> None:
+        payload = _payload(QUOTE_FIELDS, [_quote_row("3105")])
+        monkeypatch.setattr("src.tpex.fetch_quotes", lambda _: payload)
+        first = cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
+        monkeypatch.setattr("src.tpex.fetch_quotes", lambda _: {"tables": []})
+        second = cached_quotes(date(2026, 9, 23), tmp_path, pause=0)
+        assert first == second
