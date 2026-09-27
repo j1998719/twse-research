@@ -6,17 +6,21 @@ from datetime import date
 
 import pytest
 
-from src.eventstats import Observation
+from src.eventstats import Comparison, Observation
 from src.study import (
     PILOT_BELOW,
     Coverage,
     Event,
+    Finding,
+    Grouping,
+    Spec,
     Window,
     compare_groups,
     one_sample,
     pooled,
     report,
     resolve_window,
+    run_study,
 )
 
 
@@ -431,3 +435,144 @@ class TestOneSampleZeros:
         # scipy 預設的 wilcox 會丟掉零值,讓有效樣本數悄悄變小、p 被推大
         with_zeros = one_sample([1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         assert with_zeros[1] > 0.05
+
+
+CLOSES = {
+    "up": {d: 100.0 + i * 5 for i, d in enumerate(DAYS)},
+    "flat": dict.fromkeys(DAYS, 100.0),
+    "down": {d: 100.0 - i * 5 for i, d in enumerate(DAYS)},
+}
+
+
+def _spec(*groupings: Grouping) -> Spec:
+    return Spec(name="試驗", window=Window(0, 1), groupings=groupings, universe=10)
+
+
+class TestRunStudy:
+    """框架的單一入口。從這裡進去就自動得到全部守衛。"""
+
+    def _events(self) -> list[Event]:
+        # 每一檔在每一個交易日都有一個事件,tags 標記它屬於哪一組
+        return [
+            Event(code, day, DAYS[0], tags={"kind": code})
+            for code in ("up", "flat", "down")
+            for day in DAYS[1:-1]
+        ]
+
+    def test_跑出結果與涵蓋率(self) -> None:
+        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        findings, cov = run_study(spec, self._events(), DAYS, CLOSES, periods=DAYS)
+        assert len(findings) == 1
+        assert cov.universe == 10
+        assert cov.codes == 3
+
+    def test_每個_grouping_各一個_finding(self) -> None:
+        spec = _spec(
+            Grouping("漲組", 1, lambda e: e.code == "up"),
+            Grouping("跌組", 1, lambda e: e.code == "down"),
+        )
+        findings, _ = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        assert [f.name for f in findings] == ["漲組", "跌組"]
+
+    def test_回_None_的事件不參加那個檢定(self) -> None:
+        # 例如按處置次數分組時,第三次以上的不歸任何一邊
+        def only_up_vs_down(event: Event) -> bool | None:
+            if event.code == "flat":
+                return None
+            return event.code == "up"
+
+        spec = _spec(Grouping("漲對跌", 1, only_up_vs_down))
+        findings, _ = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        assert findings[0].raw.n_event + findings[0].raw.n_control <= len(DAYS) * 2
+
+    def test_窗口解不出來的事件不會進樣本(self) -> None:
+        # knowable 設在最後一天,所有窗口的進場都早於它
+        blocked = [
+            Event(code, day, DAYS[-1], tags={})
+            for code in ("up", "down")
+            for day in DAYS[1:-1]
+        ]
+        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        findings, cov = run_study(spec, blocked, DAYS, CLOSES, DAYS)
+        assert findings == []
+        assert cov.usable == 0
+        assert cov.events == len(blocked)
+
+    def test_沒有價格的股票不會進樣本(self) -> None:
+        ghost = [Event("沒這檔", day, DAYS[0]) for day in DAYS[1:-1]]
+        spec = _spec(Grouping("x", 1, lambda _: True))
+        _, cov = run_study(spec, ghost, DAYS, CLOSES, DAYS)
+        assert cov.usable == 0
+
+    def test_涵蓋率會標出先導測試(self) -> None:
+        spec = _spec(Grouping("漲組", 1, lambda e: e.code == "up"))
+        _, cov = run_study(spec, self._events(), DAYS, CLOSES, DAYS)
+        # 3 檔 / 宇集 10 檔 = 30%
+        assert cov.pilot is True
+
+    def test_沒有事件時不會炸(self) -> None:
+        spec = _spec(Grouping("x", 1, lambda _: True))
+        findings, cov = run_study(spec, [], DAYS, CLOSES, DAYS)
+        assert findings == []
+        assert cov.span is None
+
+
+class TestSpecIsFrozen:
+    """檢定清單是 tuple —— 事後補一個檢定必須是看得見的改動。"""
+
+    def test_groupings_不能就地追加(self) -> None:
+        spec = _spec(Grouping("x", 1, lambda _: True))
+        with pytest.raises(AttributeError):
+            spec.groupings.append(  # type: ignore[attr-defined]
+                Grouping("事後補的", 1, lambda _: True)
+            )
+
+    def test_spec_本身不能改(self) -> None:
+        spec = _spec(Grouping("x", 1, lambda _: True))
+        with pytest.raises(AttributeError):
+            spec.universe = 1  # type: ignore[misc]
+
+
+class TestMirrorsPrice:
+    """同期強而領先弱 = 價格的鏡像。[#18] 的主要教訓。"""
+
+    def test_同期完全相關時標為鏡像(self) -> None:
+        # 事件組全部是正報酬、對照組全部是負的 —— 分組和同期報酬完全相關,
+        # 但去期間化後兩組的中位數差是 0
+        items: list[Observation] = []
+        for period in range(12):
+            items.append(_obs("a", period, 10.0, event=True))
+            items.append(_obs("b", period, -10.0, event=False))
+        found = compare_groups("鏡像", items, 1, WEEKS)
+        assert found is not None
+        assert found.same_period[0] > 0.9
+        assert found.mirrors_price is True
+
+    def test_鏡像會出現在報表的警告裡(self) -> None:
+        items: list[Observation] = []
+        for period in range(12):
+            items.append(_obs("a", period, 10.0, event=True))
+            items.append(_obs("b", period, -10.0, event=False))
+        found = compare_groups("鏡像", items, 1, WEEKS)
+        assert found is not None
+        cov = Coverage(codes=2, universe=2, events=24, usable=24, span=None)
+        assert "價格的鏡像" in report([found], cov)
+
+    def test_同期沒關係時不標鏡像(self) -> None:
+        items: list[Observation] = []
+        for period in range(12):
+            sign = 1.0 if period % 2 else -1.0
+            items.append(_obs("a", period, sign, event=True))
+            items.append(_obs("b", period, -sign, event=False))
+        found = compare_groups("乾淨", items, 1, WEEKS)
+        assert found is not None
+        assert found.mirrors_price is False
+
+    def test_same_period_是必填的(self) -> None:
+        with pytest.raises(TypeError):
+            Finding(  # type: ignore[call-arg]
+                name="x",
+                raw=Comparison("x", 5, 5, 0, 0, 0, 0, 0.5, deduped=True),
+                demeaned=Comparison("x", 5, 5, 0, 0, 0, 0, 0.5, deduped=True),
+                periods=5,
+            )

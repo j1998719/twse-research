@@ -8,9 +8,11 @@
 * `Event.knowable` **必填且無預設**,而 `resolve_window` 會擋掉進場早於它的
   窗口 —— [#13] 有 29/31 筆新制事件的進場點落在公告當天。算報酬一定要先
   拿到窗口,所以這道檢查繞不過去。
-* `Spec` 是輸入。跑完才想加檢定,就得重跑整組並重新校正 —— [#14] 有 10 個
+* `Spec` 是 `run_study` 的輸入,而且檢定清單是 frozen 的 tuple。跑完才想加
+  檢定,就得改 Spec 並重跑整組 —— 校正的家族大小會跟著變。[#14] 有 10 個
   檢定、3 個原始 p<0.05,校正後全滅。
 * 校正由 `run_study` 自己做,不是選項。
+* 同期相關性是 `Finding` 的必填欄位,不是選項 —— 沒有它就組不出結果。
 * 重疊窗口自動篩掉並回報獨立樣本數 —— [#20] 把 36 個重疊觀察當成 36 個樣本。
 * 期間叢聚自動去除並兩種都報 —— [#19] 的 review 抓到事件組和對照組落在
   差兩個月的不同期間。
@@ -30,6 +32,7 @@ from src.eventstats import (
     Observation,
     adjust,
     compare,
+    contemporaneous,
     demean_by_period,
     effective_n,
     median,
@@ -39,7 +42,7 @@ from src.eventstats import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from datetime import date
 
 #: 涵蓋率低於這個比例就標示為先導測試,不能當全市場研究讀
@@ -281,18 +284,37 @@ def _dedup(
 
 @dataclass(frozen=True)
 class Finding:
-    """一個檢定的結果,原始與去期間化各一份。"""
+    """一個檢定的結果。
+
+    `same_period` 是必填的:[#18] 的千張大戶人數對同期報酬 r=0.464
+    (p=0.001)、對未來 r=0.130 (p=0.390) —— 同期強而領先弱,意思是這個指標
+    是價格的鏡像,不是領先訊號。只看領先那一邊會把它誤判成「沒訊號」,而
+    真相是「有訊號但不能用」。兩者要分清楚,所以組不出 Finding 就報不出結果。
+    """
 
     name: str
     raw: Comparison
     demeaned: Comparison
     #: 事件組有幾個不同的期間。獨立樣本數更接近這個而不是 n
     periods: int
+    #: 分組依據與**同一期**報酬的相關性 (Spearman r, p)
+    same_period: tuple[float, float]
 
     @property
     def overstated(self) -> float:
         """筆數是獨立期間數的幾倍。1 代表沒有高估。"""
         return self.raw.n_event / self.periods if self.periods else 0.0
+
+    @property
+    def mirrors_price(self) -> bool:
+        """同期比領先強 —— 這個指標可能只是價格的鏡像。"""
+        r, p = self.same_period
+        return p < ALPHA and abs(r) > abs_or_zero(self.demeaned)
+
+
+def abs_or_zero(comparison: Comparison) -> float:
+    """用去期間化後的中位數差當「領先效果」的粗略量尺。"""
+    return abs(comparison.median_event - comparison.median_control) / 100
 
 
 def compare_groups(
@@ -323,7 +345,16 @@ def compare_groups(
     )
     if raw is None or demeaned is None:
         return None
-    return Finding(name=name, raw=raw, demeaned=demeaned, periods=effective_n(events))
+    # 同期:分組(事件=1、對照=0)和同一期報酬的相關性。強的同期關係加上
+    # 弱的領先關係,就是「價格的鏡像」那個形狀 —— [#18] 的主要教訓
+    sides = [1.0 if o.is_event else 0.0 for o in both]
+    return Finding(
+        name=name,
+        raw=raw,
+        demeaned=demeaned,
+        periods=effective_n(events),
+        same_period=contemporaneous(sides, [o.excess for o in both]),
+    )
 
 
 def report(findings: Sequence[Finding], coverage: Coverage) -> str:
@@ -339,7 +370,7 @@ def report(findings: Sequence[Finding], coverage: Coverage) -> str:
     scored = adjust([f.demeaned for f in findings])
     lines.append(
         f"{'檢定':24}{'事件n':>6}{'期間':>5}{'高估':>6}"
-        f"{'原始p':>8}{'去期間p':>9}{'校正p':>8}"
+        f"{'原始p':>8}{'去期間p':>9}{'校正p':>8}{'同期r':>8}"
     )
     hits = 0
     for finding, (_, adjusted) in zip(findings, scored, strict=True):
@@ -349,9 +380,90 @@ def report(findings: Sequence[Finding], coverage: Coverage) -> str:
         lines.append(
             f"{finding.name:24}{finding.raw.n_event:>6}{finding.periods:>5}"
             f"{finding.overstated:>5.1f}x{finding.raw.pvalue:>8.3f}"
-            f"{finding.demeaned.pvalue:>9.3f}{adjusted:>8.3f}{mark}"
+            f"{finding.demeaned.pvalue:>9.3f}{adjusted:>8.3f}"
+            f"{finding.same_period[0]:>+8.2f}{mark}"
         )
     lines.append("")
     lines.append(f"{len(findings)} 個檢定,BH 校正後顯著:{hits} 個")
     lines.append("註:去期間化後中位數與勝率依構造靠近 0 與 50%,只看 p 值")
+    mirrors = [f.name for f in findings if f.mirrors_price]
+    if mirrors:
+        lines.append(
+            "⚠️ 同期關係強而領先關係弱,以下可能只是價格的鏡像:" + "、".join(mirrors)
+        )
     return "\n".join(lines)
+
+
+# --- 單一入口 ---
+
+
+@dataclass(frozen=True)
+class Grouping:
+    """一個檢定:怎麼把事件分成兩組,以及持有多久。
+
+    `is_event` 收一個 Event 回傳 True/False/None。None 代表這筆不參加這個
+    檢定(例如按處置次數分組時,第三次以上的不歸任何一邊)。
+    """
+
+    name: str
+    horizon: int
+    is_event: Callable[[Event], bool | None]
+
+
+@dataclass(frozen=True)
+class Spec:
+    """要測什麼。**跑之前就要寫完。**
+
+    groupings 是 tuple 而不是 list:跑完才想加一個檢定的話,得回來改這個
+    物件並重跑整組,而校正的家族大小會跟著變。這不能阻止人作弊,但它讓
+    「事後補一個檢定」變成一件看得見的事,而不是在 for 迴圈裡多一行。
+
+    [#14] 就是死在這上面:10 個檢定裡 3 個原始 p<0.05,BH 校正後全滅。
+    """
+
+    name: str
+    window: Window
+    groupings: tuple[Grouping, ...]
+    #: 宇集有幾檔。涵蓋率要靠它算,所以必須由外面明確給
+    universe: int
+
+
+def run_study(
+    spec: Spec,
+    events: Sequence[Event],
+    days: Sequence[date],
+    closes: dict[str, dict[date, float]],
+    periods: Sequence[object],
+) -> tuple[list[Finding], Coverage]:
+    """跑完 Spec 裡的每一個檢定,回傳結果與涵蓋率。
+
+    這是框架的入口。從這裡進去的研究自動得到:窗口解不出來就沒有報酬
+    (所以偷看未來的事件進不了樣本)、重疊窗口篩掉並回報獨立期間數、
+    去期間化與原始兩種都算、同期相關性一起算、涵蓋率跟著輸出。
+    """
+    scored: list[tuple[Event, float]] = []
+    for event in events:
+        value = window_return(event, days, spec.window, closes)
+        if value is not None:
+            scored.append((event, value))
+    usable = [event for event, _ in scored]
+
+    findings: list[Finding] = []
+    for grouping in spec.groupings:
+        observations: list[Observation] = []
+        for event, value in scored:
+            side = grouping.is_event(event)
+            if side is None:
+                continue
+            observations.append(
+                Observation(
+                    code=event.code,
+                    period=event.happened,
+                    excess=value,
+                    is_event=side,
+                )
+            )
+        found = compare_groups(grouping.name, observations, grouping.horizon, periods)
+        if found is not None:
+            findings.append(found)
+    return findings, Coverage.of(events, usable, spec.universe)
