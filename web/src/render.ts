@@ -14,22 +14,6 @@ import type {
 /** 新制上路的月份,月份圖用它換色 */
 const NEW_RULES_MONTH = "2026-08";
 
-/** 以出關日對齊的價格路徑(t, 超額累積報酬%) */
-const PATH_POINTS: [number, number][] = [
-	[-6, -1.54],
-	[-5, -1.61],
-	[-4, -0.96],
-	[-3, -0.61],
-	[-2, 0.51],
-	[-1, 1.97],
-	[0, 0],
-	[1, -1.21],
-	[2, -0.88],
-	[3, -0.65],
-	[4, -1.74],
-	[5, -1.72],
-];
-
 /** 狀態文字 -> 樣式類別 */
 const STATE_CLASS: Record<string, string> = {
 	今天賣出: "now",
@@ -55,17 +39,41 @@ function meta(report: Report): void {
 	fill("m-punish", thousands(c.punishes));
 	fill("m-days", thousands(c.tradingDays));
 	fill("m-bt", thousands(c.backtested));
-	fill("m-codes", thousands(c.codes));
+	fill("m-codes", c.codes === undefined ? "—" : thousands(c.codes));
 	fill("m-markets", marketBreakdown(c.markets));
 	fill("m-drop", String(c.dropped.lookahead + c.dropped.fakeRelease));
 	fill("m-gen", report.generated);
+	// 這幾個數字本來寫死在 HTML 裡,所以每次資料變動就會再錯一次 ——
+	// 頁面上半部用資料渲染、下半部寫死,兩邊必然會漂開
+	fill("v-lookahead", thousands(c.dropped.lookahead));
+	fill("v-fake", thousands(c.dropped.fakeRelease));
+	fill("v-ratios", `都在 ${ratioRange(report)} 之間`);
+	fill(
+		"v-winrates",
+		`${pct(report.headline["勝率%"])} vs ${pct(report.afterRelease["勝率%"])}`,
+	);
 	fill("rate", String(report.rate.每月平均 ?? "—"));
 }
 
+/** 三組賺賠比的範圍。寫死一個區間會在資料變動時變成假話。 */
+function ratioRange(report: Report): string {
+	const values = [report.winloss, report.winlossSecond]
+		.map((w) => w.賺賠比)
+		.filter((v): v is number => typeof v === "number");
+	if (values.length === 0) return "相近";
+	const low = Math.min(...values);
+	const high = Math.max(...values);
+	return `${low.toFixed(2)} 到 ${high.toFixed(2)}`;
+}
+
 /** 分市場的事件數。看到 2,265 筆的人要知道那裡面有多少是上櫃的。 */
-function marketBreakdown(markets: Record<string, MarketCoverage>): string {
+function marketBreakdown(
+	markets: Record<string, MarketCoverage> | undefined,
+): string {
+	// 舊的 report.json 沒有這一欄。Object.entries(undefined) 會丟 TypeError,
+	// 而 meta() 是最先跑的 —— 那不是少一個欄位,是整頁空白
 	const label: Record<string, string> = { twse: "上市", otc: "上櫃" };
-	const parts = Object.entries(markets)
+	const parts = Object.entries(markets ?? {})
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(
 			([key, m]) =>
@@ -236,7 +244,7 @@ export function render(report: Report): void {
 	tables(report);
 
 	const draw = (): void => {
-		drawPath(PATH_POINTS);
+		drawPath(report.path.map((p) => [p.t, p.excess]));
 		drawMonthly(report.monthly, NEW_RULES_MONTH);
 	};
 	draw();

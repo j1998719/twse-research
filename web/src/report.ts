@@ -98,6 +98,13 @@ export interface Offender {
 	second: number;
 }
 
+/** 以出關日對齊的價格路徑上的一個點 */
+export interface PathPoint {
+	t: number;
+	excess: number;
+	n: number;
+}
+
 export interface MarketCoverage {
 	codes: number;
 	punishes: number;
@@ -115,12 +122,14 @@ export interface Report {
 		punishes: number;
 		tradingDays: number;
 		backtested: number;
-		codes: number;
+		codes?: number;
 		/** 分市場的檔數、公告數、可回測事件數。上櫃的流動性和上市不同,
 		 *  一個分不出市場的涵蓋率等於把兩個不同的東西當成一個 */
-		markets: Record<string, MarketCoverage>;
+		markets?: Record<string, MarketCoverage>;
 		dropped: { lookahead: number; fakeRelease: number };
 	};
+	/** 價格路徑圖。本來寫死在 render.ts 裡,而且是上市那 951 筆算的 */
+	path: PathPoint[];
 	current: Current[];
 	headline: Summary;
 	winloss: WinLoss;
@@ -141,6 +150,7 @@ export interface Report {
 export const REQUIRED_KEYS: readonly (keyof Report)[] = [
 	"generated",
 	"coverage",
+	"path",
 	"current",
 	"headline",
 	"winloss",

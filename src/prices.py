@@ -121,8 +121,17 @@ def fetch_day(
 
     time.sleep(pause)
     if payload.get("stat") != "OK":
-        # 非交易日:寫一個空檔案記住,下次不用再問
-        cached.write_text("", encoding="utf-8")
+        # 非交易日:寫一個空檔案記住,下次不用再問。
+        #
+        # 只在**週末**這樣做。平日回 stat != OK 可能是真的休市,也可能是
+        # 限流或暫時性錯誤 —— 兩者長得一模一樣,而寫下空檔案就永遠不會再
+        # 重試了。實測 2026-09-21(週一)就是這樣被記成非交易日,而那天
+        # 上櫃有 891 檔在交易、上市其實有 1,085 檔。
+        #
+        # 平日不寫快取,下次跑會再問一次。代價是真的國定假日每次都會多問
+        # 一次,那比永久少一天資料便宜太多。
+        if day.weekday() >= SATURDAY:
+            cached.write_text("", encoding="utf-8")
         return None
 
     cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ import pandas as pd
 from scipy import stats
 
 from src.backtest import (
+    PRE_RELEASE_ENTRY,
     Timing,
     event_rate,
     exit_returns,
@@ -238,6 +239,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
 
     return {
         "generated": str(today.date()),
+        "path": _path(punishes, prices, index),
         "coverage": {
             "from": str(days.min().date()),
             "to": str(days.max().date()),
@@ -274,6 +276,45 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         "offenders": _offenders(numbered),
         "dist": runs.excess.dropna().round(1).tolist(),
     }
+
+
+#: 價格路徑圖的橫軸:相對出關日的交易日偏移
+PATH_OFFSETS = tuple(range(-6, 6))
+
+
+def _path(
+    punishes: pd.DataFrame, prices: pd.DataFrame, index: dict[date, float]
+) -> list[dict[str, float]]:
+    """以出關日對齊的超額累積報酬路徑。
+
+    這張圖本來是寫死在 render.ts 裡的 12 個點,而且是上市那 951 筆算出來的
+    —— 加入上櫃之後它畫的宇集和旁邊每一個數字都不一樣了,又沒有任何測試
+    會發現。從資料算出來才不會再漂。
+
+    每個偏移各跑一次 (entry=-6, exit=t),所以是「從 t-6 買進、持有到 t」的
+    累積報酬,和圖的說明一致。
+    """
+    out: list[dict[str, float]] = []
+    for offset in PATH_OFFSETS:
+        timing = Timing(entry=PRE_RELEASE_ENTRY, exit=offset)
+        runs = pre_release_run(
+            punishes[punishes.nth > 0],
+            prices,
+            index,
+            timing=timing,
+            all_punishes=punishes,
+        )
+        clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+        if len(clean) < MIN_SAMPLES:
+            continue
+        out.append(
+            {
+                "t": offset,
+                "excess": round(float(clean.excess.median()), 2),
+                "n": len(clean),
+            }
+        )
+    return out
 
 
 def _by_market(

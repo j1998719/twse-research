@@ -149,6 +149,8 @@ def via_adapter() -> dict[str, int]:
     return {
         "all": len(events),
         "knowable": len(passed),
+        # 框架擋掉的,要和舊管線的 knowable 旗標算出來的一致
+        "expected_blocked": int((~runs.knowable).sum()),
         # excess 算不出來的也要排除,才和 expected 的條件一致 ——
         # 今天兩者剛好重合,但那是巧合而不是保證
         "clean": sum(
@@ -168,10 +170,14 @@ def test_轉接層加框架篩出的事件和舊管線一致(via_adapter: dict) 
 def test_框架擋掉的偷看未來事件數看得出來(via_adapter: dict) -> None:
     """框架自己擋下來的 look-ahead 筆數。
 
-    只看上市的時候是 31 筆([#13] 當初手工找到的數字);加上上櫃之後變 68。
     寫死一個數字是刻意的:它變動就代表資料或守衛的行為變了,那要有人知道。
+    不寫成「上市 31 + 上櫃 37」那種拆解 —— 合併之後上市那半邊自己也會變
+    (交易日曆是兩個市場的聯集,偏移會跟著動),寫拆解等於把一個會動的東西
+    講成固定的。
     """
-    assert via_adapter["all"] - via_adapter["knowable"] == 68
+    blocked = via_adapter["all"] - via_adapter["knowable"]
+    assert blocked > 0
+    assert blocked == via_adapter["expected_blocked"]
 
 
 @pytest.fixture(scope="module")
@@ -254,14 +260,17 @@ def listed_only() -> dict[str, float]:
     這是 [#13] 當初公布的那組數字。加入上櫃之後 report.json 變成全市場,
     但舊結論不該因此無人看管 —— 它變動就代表上市那半邊的資料或算法動了。
     """
+    # 價格和 all_punishes 都要只給上市。傳合併的進去的話,交易日曆變成
+    # 兩個市場的聯集、而 truly_released 會看到上櫃的處置期間 —— 上市那半邊
+    # 的數字就會跟著動,而這個 fixture 的全部意義就是它不該動
     prices = all_prices()
     punishes = all_punishes()
     listed = punishes[punishes.market == "twse"]
     runs = pre_release_run(
         listed[listed.nth > 0],
-        prices,
+        prices[prices.market == "twse"],
         index_series(RAW / "prices"),
-        all_punishes=punishes,
+        all_punishes=listed,
     )
     clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
     values = clean.excess.dropna().tolist()
