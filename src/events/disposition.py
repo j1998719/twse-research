@@ -40,6 +40,10 @@ def events(punishes: pd.DataFrame) -> list[Event]:
                 # 舊管線算得出超額報酬嗎。框架自己會算,但比對的時候
                 # 兩邊的條件要一致
                 "has_excess": row.get("excess") == row.get("excess"),
+                # market 的 join key。按代號查會把轉上市股票的上櫃事件標錯
+                "start": row["start"].date()
+                if hasattr(row["start"], "date")
+                else row["start"],
                 "old_excess": row.get("excess"),
             },
         )

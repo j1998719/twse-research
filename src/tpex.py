@@ -171,8 +171,20 @@ def parse_disposals(payload: dict[str, Any]) -> Iterator[dict[str, str]]:
     if not fields:
         return
     at = {name: i for i, name in enumerate(fields)}
-    if "證券代號" not in at:
-        msg = f"上櫃處置公告的欄位變了:{fields}"
+    # 每一個下游會用到的欄位都要檢查。原本只驗證證券代號,而「處置內容」
+    # 被改名的話後果最嚴重:detail 變空字串,每一筆都被判成第一次處置,
+    # 列數不變、也不會報錯,第二次處置的分組就這樣安靜消失
+    needed = (
+        "公布日期",
+        "證券代號",
+        "證券名稱",
+        "處置起訖時間",
+        "處置原因",
+        "處置內容",
+    )
+    missing = [name for name in needed if name not in at]
+    if missing:
+        msg = f"上櫃處置公告缺欄位 {missing}:{fields}"
         raise ValueError(msg)
     for row in data:
         code = str(row[at["證券代號"]]).strip()
@@ -196,6 +208,14 @@ def parse_disposals(payload: dict[str, Any]) -> Iterator[dict[str, str]]:
 
 #: 上櫃版的「第二次(含)以上」。上市是在處置措施欄寫「第二次處置」
 REPEAT_MARK = "最近30個營業日內曾發布處置"
+#: 不編號的措施。上市把這類寫成「人工管制撮合」並給 nth=0,研究會排除它們;
+#: 上櫃沒有措施欄,但這個條文引用把兩群分得乾乾淨淨 —— 實測 187 列全部有、
+#: 另外 1,632 列全部沒有(撮合間隔也跟著分開:10/25/45/60 分鐘 vs 5/20/2)。
+#:
+#: 這一類本身沒有訊號(n=106、中位數 +0.50%、勝率 52.8%、p=0.60),所以把它
+#: 當成第一次處置收進來,等於用 106 筆雜訊稀釋自己的發現。而且更糟的是:
+#: 上市對應的 102 列因為 nth=0 被排除,兩邊的納入規則會不一樣。
+UNNUMBERED_MARK = "業務規則第12條"
 #: 處置期間的格式:115/09/23~115/10/05
 PERIOD_SEP = "~"
 #: 這個來源的文字欄位會夾帶相對連結,例如
@@ -254,12 +274,27 @@ def normalise(row: dict[str, str]) -> dict[str, object] | None:
         "announced": announced,
         "code": clean_text(row.get("證券代號", "")),
         "name": clean_text(row.get("證券名稱", "")),
-        # 上櫃沒有「第幾次處置」欄。帶著重複處置字樣的算第二次,其餘第一次
-        "nth": 2 if REPEAT_MARK in detail else 1,
-        "measure": "第二次處置" if REPEAT_MARK in detail else "第一次處置",
+        # 上櫃沒有「第幾次處置」欄,次數要從文字認。不編號的措施給 0,
+        # 跟上市一致 —— 研究會用 nth > 0 篩掉它們
+        "nth": _nth_of(detail),
+        "measure": _measure_of(detail),
         "condition": clean_text(row.get("處置原因", "")),
         "start": start,
         "end": end,
         "detail": detail,
         "market": "otc",
     }
+
+
+def _nth_of(detail: str) -> int:
+    """從處置內容的文字判斷第幾次處置。不編號的措施回 0。"""
+    if UNNUMBERED_MARK in detail:
+        return 0
+    return 2 if REPEAT_MARK in detail else 1
+
+
+def _measure_of(detail: str) -> str:
+    """對應上市「處置措施」欄的文字。"""
+    if UNNUMBERED_MARK in detail:
+        return "人工管制撮合"
+    return "第二次處置" if REPEAT_MARK in detail else "第一次處置"

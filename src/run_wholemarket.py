@@ -18,7 +18,7 @@ import pandas as pd
 
 from src.backtest import pre_release_run, trading_days
 from src.events.disposition import events as disposition_events
-from src.eventstats import window_excess
+from src.eventstats import clustered_ci, window_excess
 from src.market import index_series
 from src.study import Window, one_sample, resolve_window
 from src.universe import all_prices, all_punishes, summary
@@ -76,9 +76,16 @@ def main() -> int:
     ]
     days = sorted(day.date() for day in trading_days(prices))
     closes = closes_by_code(prices)
-    market = punishes.drop_duplicates("code").set_index("code")["market"].to_dict()
+    # market 從**公告那一列**認,不是按代號查:轉上市的股票(6426、6446)
+    # 在兩個市場都有處置公告,按代號查會讓它的上櫃事件全部被標成上市。
+    # 這一欄正是這個模組說「一定要能分市場看」的那一欄,不能用錯的 join 湊
+    market = {
+        (str(row["code"]), pd.Timestamp(row["start"]).date()): str(row["market"])
+        for row in punishes.to_dict("records")
+    }
 
-    rows: list[tuple[str, float, float]] = []
+    # (市場, 舊基準超額, 新基準超額, 進場的年月 —— 拔靴的群集)
+    rows: list[tuple[str, float, float, str]] = []
     for event in events:
         span = resolve_window(event, days, PRE_RELEASE)
         if span is None or span[0] <= event.knowable or event.code not in closes:
@@ -88,17 +95,18 @@ def main() -> int:
             continue
         rows.append(
             (
-                market.get(event.code, "?"),
+                market.get((event.code, event.tags["start"]), "?"),  # type: ignore[arg-type]
                 float(event.tags["old_excess"]),  # type: ignore[arg-type]
                 got,
+                f"{span[0]:%Y-%m}",
             )
         )
 
     print(f"乾淨樣本 {len(rows)} 筆")
     print("舊基準是市值加權的加權指數;新基準是全宇集逐窗口的等權買進持有\n")
     print(
-        f"{'市場':6}{'n':>6}{'舊中位':>10}{'新中位':>10}"
-        f"{'新平均':>10}{'勝率':>8}{'Wilcoxon p':>13}"
+        f"{'市場':6}{'n':>6}{'月':>4}{'舊中位':>10}{'新中位':>10}"
+        f"{'勝率':>8}{'群集拔靴 95% CI':>20}{'≤0 比例':>9}"
     )
     for label in ("全部", "twse", "otc"):
         sub = [r for r in rows if label == "全部" or r[0] == label]
@@ -106,12 +114,21 @@ def main() -> int:
             continue
         old = [r[1] for r in sub]
         new = [r[2] for r in sub]
-        median, pvalue = one_sample(new)
+        median, _ = one_sample(new)
         win = sum(1 for v in new if v > 0) / len(new) * 100
+        months = [r[3] for r in sub]
+        low, high, nonpos = clustered_ci(new, months)
         print(
-            f"{label:6}{len(sub):>6}{st.median(old):>+9.2f}%{median:>+9.2f}%"
-            f"{st.mean(new):>+9.2f}%{win:>7.1f}%{pvalue:>13.2e}"
+            f"{label:6}{len(sub):>6}{len(set(months)):>4}"
+            f"{st.median(old):>+9.2f}%{median:>+9.2f}%"
+            f"{win:>7.1f}%{f'[{low:+.2f}, {high:+.2f}]':>20}{nonpos:>8.1%}"
         )
+    print(
+        "\n信賴區間是按月重抽的群集拔靴,不是 Wilcoxon 的 p 值 —— 事件叢聚在"
+        "同一段行情裡(2,265 筆只落在約 1,081 個買進日,最多 20 筆共用一天),"
+        "\n把它們當獨立樣本會把 p 算得太小。「≤0 比例」是重抽中位數不為正的"
+        "比例,比一個小 p 值誠實。"
+    )
     print(
         "\n上櫃是獨立的樣本外複現 —— 假設成形時沒看過它。"
         "但滑價風險在上櫃更高:流動性較差,而處置期間是集合競價。"

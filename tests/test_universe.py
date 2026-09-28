@@ -149,9 +149,17 @@ class TestSummary:
         assert facts["codes_by_market"] == {"otc": 1, "twse": 2}
         assert facts["events_by_market"] == {"otc": 1, "twse": 1}
 
-    def test_期間是最早到最晚(self, listed: Path, otc: Path) -> None:
-        facts = summary(all_prices(listed, otc), all_punishes())
-        assert facts["span"] is not None
+    def test_期間是最早到最晚(self, listed: Path, otc: Path, tmp_path: Path) -> None:
+        # all_punishes() 不帶參數會去讀真正的 data/out/*.csv —— 那讓這個測試
+        # 不密閉,而且斷言的是 span(只來自 prices),所以那個引數是裝飾品
+        facts = summary(
+            all_prices(listed, otc),
+            all_punishes(tmp_path / "無1.csv", tmp_path / "無2.csv"),
+        )
+        assert facts["span"] == (
+            pd.Timestamp("2026-09-23").date(),
+            pd.Timestamp("2026-09-23").date(),
+        )
 
     def test_空表也能用而不是丟_KeyError(self, tmp_path: Path) -> None:
         # 抓取失敗或第一次執行時應該印出「什麼都沒有」,不是讓人以為程式壞了

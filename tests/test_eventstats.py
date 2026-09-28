@@ -12,6 +12,7 @@ from src.eventstats import (
     Comparison,
     Observation,
     adjust,
+    clustered_ci,
     compare,
     contemporaneous,
     demean_by_period,
@@ -365,3 +366,61 @@ class TestWindowExcess:
         assert got is not None  # 自己就是宇集,算得出來
         got2 = window_excess(lonely, {"y": {D(1): 1.0}}, D(1), D(9))
         assert got2 is None
+
+
+class TestClusteredCi:
+    """按群集重抽 —— 事件叢聚時把它們當獨立樣本會把 p 算得太小。"""
+
+    def test_明確為正的資料下界也為正(self) -> None:
+        values = [5.0] * 40
+        clusters = [f"m{i % 10}" for i in range(40)]
+        low, _high, nonpos = clustered_ci(values, clusters, draws=200)
+        assert low > 0
+        assert nonpos == 0.0
+
+    def test_明確為負的資料上界也為負(self) -> None:
+        values = [-5.0] * 40
+        clusters = [f"m{i % 10}" for i in range(40)]
+        _low, high, nonpos = clustered_ci(values, clusters, draws=200)
+        assert high < 0
+        assert nonpos == 1.0
+
+    def test_下界不會超過上界(self) -> None:
+        values = [float(i % 7) - 3 for i in range(80)]
+        clusters = [f"m{i % 12}" for i in range(80)]
+        low, high, _ = clustered_ci(values, clusters, draws=200)
+        assert low <= high
+
+    def test_全部在同一個群集時區間會很寬(self) -> None:
+        # 群集少代表資訊少。這正是要表達的事
+        many = clustered_ci([1.0, 5.0] * 20, [f"m{i}" for i in range(40)], draws=200)
+        few = clustered_ci([1.0, 5.0] * 20, ["m"] * 40, draws=200)
+        assert few == (0.0, 0.0, 1.0)  # 群集不足,不做拔靴
+        assert many[0] > 0
+
+    def test_同一個群集裡的相關性有被保留(self) -> None:
+        # 同一個月的觀察要一起被抽中或一起落選。如果是逐筆重抽,
+        # 40 筆的區間會比 4 個群集窄很多
+        values = [10.0] * 20 + [-10.0] * 20
+        by_cluster = ["up"] * 20 + ["down"] * 20
+        low, high, _ = clustered_ci(values, by_cluster, draws=200)
+        # 兩個群集不足門檻
+        assert (low, high) == (0.0, 0.0)
+
+    def test_可重現_同樣的輸入給同樣的答案(self) -> None:
+        values = [float(i % 5) for i in range(60)]
+        clusters = [f"m{i % 10}" for i in range(60)]
+        first = clustered_ci(values, clusters, draws=200)
+        second = clustered_ci(values, clusters, draws=200)
+        assert first == second
+
+    def test_不同的_seed_給不同的答案(self) -> None:
+        values = [float(i % 5) for i in range(60)]
+        clusters = [f"m{i % 10}" for i in range(60)]
+        a = clustered_ci(values, clusters, draws=200, seed=1)
+        b = clustered_ci(values, clusters, draws=200, seed=2)
+        assert a != b
+
+    def test_長度不一致要出錯(self) -> None:
+        with pytest.raises(ValueError, match="zip"):
+            clustered_ci([1.0, 2.0], ["m"], draws=10)

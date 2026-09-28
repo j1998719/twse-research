@@ -197,7 +197,7 @@ class TestParseDisposals:
         assert list(parse_disposals({"tables": []})) == []
 
     def test_欄位變了要出錯(self) -> None:
-        with pytest.raises(ValueError, match="欄位變了"):
+        with pytest.raises(ValueError, match="缺欄位"):
             list(parse_disposals(_payload(["編號", "公布日期"], [["1", "115/09/23"]])))
 
 
@@ -366,3 +366,92 @@ class TestNormalise:
         got = normalise(self._row(處置起訖時間="115/09/23~115/09/23"))
         assert got is not None
         assert got["start"] == got["end"]
+
+
+class TestUnnumberedMeasure:
+    """不編號的措施要給 nth=0,和上市一致 —— 研究用 nth > 0 篩掉它們。"""
+
+    def _detail(self, *, unnumbered: bool, repeat: bool = False) -> str:
+        head = "最近30個營業日內曾發布處置," if repeat else ""
+        tail = (
+            "另依本中心業務規則第12條規定:各證券商於投資人每日委託買賣"
+            if unnumbered
+            else "單筆委託"
+        )
+        return f"{head}因連續3個營業日改以人工管制之撮合終端機執行撮合作業,{tail}"
+
+    def _row(self, detail: str) -> dict[str, str]:
+        return {
+            "公布日期": "115/09/22",
+            "證券代號": "3664",
+            "證券名稱": "安瑞",
+            "處置起訖時間": "115/09/04~115/09/10",
+            "處置原因": "連續3個營業日",
+            "處置內容": detail,
+        }
+
+    def test_引用業務規則第12條的給零(self) -> None:
+        # 上市把這類寫成「人工管制撮合」並給 nth=0。上櫃沒有措施欄,但這個
+        # 條文引用把兩群分得乾乾淨淨:187 列全部有、另外 1632 列全部沒有
+        got = normalise(self._row(self._detail(unnumbered=True)))
+        assert got is not None
+        assert got["nth"] == 0
+        assert got["measure"] == "人工管制撮合"
+
+    def test_沒有引用的照舊編號(self) -> None:
+        got = normalise(self._row(self._detail(unnumbered=False)))
+        assert got is not None
+        assert got["nth"] == 1
+
+    def test_不編號優先於重複處置的判斷(self) -> None:
+        # 兩個字樣同時出現時,不編號要贏 —— 不然它會被當成第二次處置收進樣本
+        got = normalise(self._row(self._detail(unnumbered=True, repeat=True)))
+        assert got is not None
+        assert got["nth"] == 0
+
+    def test_這一類進不了樣本(self) -> None:
+        # 研究篩 nth > 0。實測這 187 列裡有 106 筆會通過其他篩選,而它們
+        # 沒有訊號(中位數 +0.50%、勝率 52.8%、p=0.60)—— 收進來等於自我稀釋
+        rows = [
+            self._row(self._detail(unnumbered=True)),
+            self._row(self._detail(unnumbered=False)),
+        ]
+        got = [normalise(r) for r in rows]
+        kept = [x for x in got if x and int(str(x["nth"])) > 0]
+        assert len(kept) == 1
+
+
+class TestDisposalFieldValidation:
+    """每個下游會用到的欄位都要檢查,不能只驗證證券代號。"""
+
+    def _fields(self, drop: str) -> list[str]:
+        return [f for f in DISPOSAL_FIELDS if f != drop]
+
+    def test_少了處置內容要出錯(self) -> None:
+        # 這是後果最嚴重的一個:detail 變空字串 -> 每一筆都判成第一次處置,
+        # 列數不變、不報錯,第二次處置的分組安靜消失
+        with pytest.raises(ValueError, match="缺欄位"):
+            list(parse_disposals(_payload(self._fields("處置內容"), [["x"] * 9])))
+
+    def test_少了處置起訖時間要出錯(self) -> None:
+        with pytest.raises(ValueError, match="缺欄位"):
+            list(parse_disposals(_payload(self._fields("處置起訖時間"), [["x"] * 9])))
+
+    def test_少了公布日期要出錯(self) -> None:
+        with pytest.raises(ValueError, match="缺欄位"):
+            list(parse_disposals(_payload(self._fields("公布日期"), [["x"] * 9])))
+
+    def test_欄位齊全就不會出錯(self) -> None:
+        row = [
+            "1",
+            "115/09/22",
+            "6218",
+            "豪勉",
+            "6",
+            "115/09/23~115/10/05",
+            "連續3個營業日",
+            "因連續3個營業日",
+            "100",
+            "15",
+        ]
+        assert len(list(parse_disposals(_payload(DISPOSAL_FIELDS, [row])))) == 1

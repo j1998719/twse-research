@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -232,3 +233,45 @@ def window_excess[DayT: SupportsAllComparisons](
     if costs:
         stock -= ROUND_TRIP_COST_PCT
     return stock - bench
+
+
+def clustered_ci(
+    values: Sequence[float],
+    clusters: Sequence[object],
+    draws: int = 2000,
+    seed: int = 20260101,
+) -> tuple[float, float, float]:
+    """按群集重抽的中位數信賴區間,回傳 (下界, 上界, 中位數 ≤ 0 的比例)。
+
+    事件會叢聚在同一段行情裡 —— 全市場處置研究的 2,265 個事件只落在約 1,081
+    個不同的買進日,最多 20 個共用同一天。同一天的股票一起漲跌,所以
+    Wilcoxon 把它們當獨立樣本會把 p 值算得太小。
+
+    重抽的單位是**群集**(通常是月),不是單筆觀察,這樣才保留群集內的相關性。
+    回傳的第三個值是「有多少比例的重抽中位數不為正」,那比一個小 p 值誠實。
+
+    seed 固定:研究要能重現,而 Math.random 式的不可重現在這裡是缺陷不是特性。
+    """
+    grouped: dict[object, list[float]] = {}
+    for value, key in zip(values, clusters, strict=True):
+        grouped.setdefault(key, []).append(value)
+    keys = list(grouped)
+    if len(keys) < MIN_CLUSTERS:
+        return (0.0, 0.0, 1.0)
+    # S311:拔靴重抽不是密碼學用途,而且要可重現
+    rng = random.Random(seed)  # noqa: S311
+    medians: list[float] = []
+    for _ in range(draws):
+        pooled: list[float] = []
+        for _ in keys:
+            pooled.extend(grouped[keys[rng.randrange(len(keys))]])
+        medians.append(median(pooled))
+    medians.sort()
+    low = medians[int(0.025 * len(medians))]
+    high = medians[int(0.975 * len(medians))]
+    nonpositive = sum(1 for m in medians if m <= 0) / len(medians)
+    return (low, high, nonpositive)
+
+
+#: 少於這麼多個群集就不做拔靴,重抽的變異會大到沒有意義
+MIN_CLUSTERS = 8
