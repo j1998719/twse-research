@@ -27,6 +27,7 @@ from src.backtest import (
 from src.capital import capital_run
 from src.market import index_series
 from src.regime import MARKET_REGIMES, slice_by
+from src.universe import all_prices, all_punishes
 
 
 RAW = Path("data/raw")
@@ -146,10 +147,12 @@ def _offenders(numbered: pd.DataFrame, limit: int = 12) -> list[dict[str, Any]]:
 
 def build(today: pd.Timestamp) -> dict[str, Any]:
     """讀出所有資料,算出網頁要的每一塊。"""
-    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
-    punishes = pd.read_csv(
-        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
-    )
+    # 全市場(上市 + 上櫃)。原本只讀 prices.csv / punishes.csv,所以網頁顯示
+    # 951 筆而程式跑出 2,265 筆 —— 兩邊對不上,而網頁是給人看的那一份([#23])
+    prices = all_prices()
+    punishes = all_punishes()
+    # 注意股公告目前只有上市。櫃買中心的注意股端點還沒接,所以這個數字
+    # 是上市的,不是全市場的 —— coverage 裡會標明
     notices = pd.read_csv(OUT / "notices.csv", parse_dates=["day"])
     index = index_series(RAW / "prices")
     days = trading_days(prices)
@@ -239,9 +242,12 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
             "from": str(days.min().date()),
             "to": str(days.max().date()),
             "notices": len(notices),
+            "noticesMarket": "twse",
             "punishes": len(punishes),
             "tradingDays": len(days),
             "backtested": len(runs),
+            "codes": int(prices.code.nunique()),
+            "markets": _by_market(prices, punishes, runs),
             "dropped": {
                 "lookahead": int((~raw_runs.knowable).sum()),
                 "fakeRelease": int(
@@ -268,6 +274,34 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         "offenders": _offenders(numbered),
         "dist": runs.excess.dropna().round(1).tolist(),
     }
+
+
+def _by_market(
+    prices: pd.DataFrame, punishes: pd.DataFrame, runs: pd.DataFrame
+) -> dict[str, dict[str, int]]:
+    """分市場的檔數、公告數、可回測事件數。
+
+    上櫃的流動性比上市差,一個分不出市場的涵蓋率等於把兩個不同的東西
+    當成一個([#23])。事件的市場要從公告那一列認,不是按代號查 ——
+    轉上市的股票兩邊都有公告。
+    """
+    label = {
+        (str(row["code"]), pd.Timestamp(row["start"]).date()): str(row["market"])
+        for row in punishes.to_dict("records")
+    }
+    events: dict[str, int] = {}
+    for row in runs.to_dict("records"):
+        key = (str(row["code"]), pd.Timestamp(row["start"]).date())
+        market = label.get(key, "?")
+        events[market] = events.get(market, 0) + 1
+    out: dict[str, dict[str, int]] = {}
+    for market in sorted({*prices.market.unique(), *punishes.market.unique()}):
+        out[str(market)] = {
+            "codes": int(prices[prices.market == market].code.nunique()),
+            "punishes": int((punishes.market == market).sum()),
+            "backtested": events.get(str(market), 0),
+        }
+    return out
 
 
 def main() -> None:

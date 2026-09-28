@@ -1,7 +1,11 @@
-"""驗收測試:框架必須重現 [#13] 的主要發現。
+"""驗收測試:框架必須重現處置股研究公布的數字。
 
 一個沒辦法重現既有結論的框架不能用。這個測試把處置股研究的乾淨樣本餵進
 框架的 Event / Window / resolve_window,然後比對 report.json 裡的數字。
+
+**現在比的是全市場**(上市 + 上櫃,2,265 筆)。原本只有上市的 951 筆、
+中位數 +1.65%、勝率 58.7% 那一組,由 test_上市子集的歷史基準沒有跑掉 釘住
+—— 舊結論不會被新資料悄悄改掉,兩組數字都在。
 
 對不上就是兩種情況之一:框架有 bug,或原本的結論有問題。兩種都要查。
 
@@ -14,15 +18,15 @@ import json
 from datetime import date
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from src.backtest import pre_release_run, trading_days
-from src.eventdata import load_closes
 from src.events.disposition import events as disposition_events
 from src.eventstats import window_excess
 from src.market import index_series
+from src.run_wholemarket import closes_by_code
 from src.study import Event, Window, one_sample, resolve_window
+from src.universe import all_prices, all_punishes
 
 
 OUT = Path("data/out")
@@ -38,10 +42,8 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def reproduced() -> dict[str, object]:
     """用框架重跑一次,回傳算出來的統計量與窗口比對結果。"""
-    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
-    punishes = pd.read_csv(
-        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
-    )
+    prices = all_prices()
+    punishes = all_punishes()
     runs = pre_release_run(
         punishes[punishes.nth > 0],
         prices,
@@ -133,10 +135,8 @@ def test_偷看未來的事件被框架自己擋掉(reproduced: dict) -> None:
 @pytest.fixture(scope="module")
 def via_adapter() -> dict[str, int]:
     """完全走轉接層的事件篩選,不在測試裡手刻。"""
-    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
-    punishes = pd.read_csv(
-        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
-    )
+    prices = all_prices()
+    punishes = all_punishes()
     runs = pre_release_run(
         punishes[punishes.nth > 0],
         prices,
@@ -166,8 +166,12 @@ def test_轉接層加框架篩出的事件和舊管線一致(via_adapter: dict) 
 
 
 def test_框架擋掉的偷看未來事件數看得出來(via_adapter: dict) -> None:
-    """[#13] 當初找到的 look-ahead 筆數,現在是框架自己擋下來的。"""
-    assert via_adapter["all"] - via_adapter["knowable"] == 31
+    """框架自己擋下來的 look-ahead 筆數。
+
+    只看上市的時候是 31 筆([#13] 當初手工找到的數字);加上上櫃之後變 68。
+    寫死一個數字是刻意的:它變動就代表資料或守衛的行為變了,那要有人知道。
+    """
+    assert via_adapter["all"] - via_adapter["knowable"] == 68
 
 
 @pytest.fixture(scope="module")
@@ -178,10 +182,8 @@ def both_benchmarks() -> dict[str, float]:
     和個股同一種持有方式(等權買進持有),理由寫在 eventstats 裡。招牌數字
     到底吃不吃這個差別,要算出來才知道。
     """
-    prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
-    punishes = pd.read_csv(
-        OUT / "punishes.csv", parse_dates=["announced", "start", "end"]
-    )
+    prices = all_prices()
+    punishes = all_punishes()
     runs = pre_release_run(
         punishes[punishes.nth > 0],
         prices,
@@ -194,7 +196,9 @@ def both_benchmarks() -> dict[str, float]:
         if e.tags["truly_released"] and e.tags["has_excess"]
     ]
     days = sorted(day.date() for day in trading_days(prices))
-    closes = load_closes(since="2019-12-01")
+    # eventdata.load_closes 只讀上市的 prices.csv —— 用它的話上櫃股配不到
+    # 價格,兩種基準就會算在不同的樣本上,比的不是基準而是樣本
+    closes = closes_by_code(prices)
 
     old: list[float] = []
     new: list[float] = []
@@ -218,7 +222,8 @@ def both_benchmarks() -> dict[str, float]:
 
 
 def test_兩種基準配到同一組事件(both_benchmarks: dict) -> None:
-    assert both_benchmarks["n"] == 951
+    """全市場。兩種基準必須算在同一批事件上,否則比的不是基準而是樣本。"""
+    assert both_benchmarks["n"] == 2265
 
 
 def test_換成框架的基準結論不變(both_benchmarks: dict) -> None:
@@ -233,10 +238,46 @@ def test_換成框架的基準結論不變(both_benchmarks: dict) -> None:
 
 
 def test_兩種基準的差距不大(both_benchmarks: dict) -> None:
-    """實測 +1.65% vs +2.00% —— 基準的選擇不是這個發現的來源。
+    """實測 +1.87% vs +1.98% —— 基準的選擇不是這個發現的來源。
 
     差距擴大到 1 個百分點以上就要回頭查:那代表結論開始依賴基準怎麼算,
     而不是事件本身。
     """
     gap = both_benchmarks["new_median"] - both_benchmarks["old_median"]
     assert abs(gap) < 1.0
+
+
+@pytest.fixture(scope="module")
+def listed_only() -> dict[str, float]:
+    """只用上市那一半重跑,當歷史基準。
+
+    這是 [#13] 當初公布的那組數字。加入上櫃之後 report.json 變成全市場,
+    但舊結論不該因此無人看管 —— 它變動就代表上市那半邊的資料或算法動了。
+    """
+    prices = all_prices()
+    punishes = all_punishes()
+    listed = punishes[punishes.market == "twse"]
+    runs = pre_release_run(
+        listed[listed.nth > 0],
+        prices,
+        index_series(RAW / "prices"),
+        all_punishes=punishes,
+    )
+    clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+    values = clean.excess.dropna().tolist()
+    median, _ = one_sample(values)
+    return {
+        "n": len(values),
+        "median": round(median, 2),
+        "win": round(sum(1 for v in values if v > 0) / len(values) * 100, 1),
+    }
+
+
+def test_上市子集的歷史基準沒有跑掉(listed_only: dict) -> None:
+    """951 筆、+1.65%、58.7% —— [#13] 公布的那組數字。
+
+    寫死是刻意的。加入上櫃不該讓上市那半邊的數字改變,改變了就是有 bug。
+    """
+    assert listed_only["n"] == 951
+    assert listed_only["median"] == 1.65
+    assert listed_only["win"] == 58.7
