@@ -52,6 +52,15 @@ def test_巢狀結構的關鍵欄位():
     assert {"from", "to", "backtested", "dropped"} <= set(data["coverage"])
     assert {"lookahead", "fakeRelease"} <= set(data["coverage"]["dropped"])
     assert "中位數%" in data["headline"]
+    # 分市場的涵蓋率。原本只檢查最上層的 key,所以這層改名不會有人發現
+    assert {"codes", "markets", "noticesMarket"} <= set(data["coverage"])
+    for market, facts in data["coverage"]["markets"].items():
+        assert {"codes", "punishes", "backtested"} <= set(facts), market
+    assert data["path"], "價格路徑不能是空的"
+    for point in data["path"]:
+        assert {"t", "excess", "n"} <= set(point)
     assert "期望值%" in data["winloss"]
     for item in data["current"]:
         assert {"buyDay", "sellDay", "status", "histEV"} <= set(item)
+        # 同類統計是哪個市場算的,以及有沒有退回混合
+        assert {"market", "histPooled"} <= set(item)

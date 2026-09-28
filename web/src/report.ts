@@ -39,6 +39,10 @@ export interface WinLoss {
 
 /** 目前仍在處置期間的個股,附歷史同類事件的統計 */
 export interface Current {
+	/** 這一檔在哪個市場。同類統計是用同市場的樣本算的 */
+	market: string;
+	/** 同市場樣本不足而退回混合市場的統計 */
+	histPooled: boolean;
 	code: number;
 	name: string;
 	measure: string;

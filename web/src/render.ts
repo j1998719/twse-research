@@ -36,6 +36,8 @@ function meta(report: Report): void {
 	const c = report.coverage;
 	fill("m-range", `${c.from} – ${c.to}`);
 	fill("m-notice", thousands(c.notices));
+	// 注意股目前只有上市 —— 旁邊的「處置」是兩個市場,不標的話讀起來像同一個範圍
+	fill("m-notice-mk", c.noticesMarket === "twse" ? "(僅上市)" : "");
 	fill("m-punish", thousands(c.punishes));
 	fill("m-days", thousands(c.tradingDays));
 	fill("m-bt", thousands(c.backtested));

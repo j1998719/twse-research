@@ -42,6 +42,8 @@ CAPITAL_LEVELS: tuple[float | None, ...] = (None, 5_000_000, 1_000_000, 500_000)
 PATH_RANGE = range(-6, 6)
 MIN_SAMPLES = 3
 SECOND = 2
+#: 有編號的處置措施。人工管制撮合之類的不在研究樣本裡,不該掛上它的統計
+NUMBERED_MEASURES = ("第一次處置", "第二次處置")
 #: 未來交易日用平日推算,往後推這麼多天夠用
 PROJECT_DAYS = 40
 
@@ -89,8 +91,13 @@ def _current(
     seq: list[pd.Timestamp],
     known_last: pd.Timestamp,
     today: pd.Timestamp,
+    market_of: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """仍在處置期間的個股,附歷史同類事件的統計。"""
+    """仍在處置期間的個股,附歷史同類事件的統計。
+
+    「同類」包含同一個市場:上櫃的流動性和滑價和上市不同,拿混合的統計掛在
+    一張上櫃的卡片上會誤導。同市場的樣本太少時才退回混合,並在欄位標明。
+    """
     rows: list[dict[str, Any]] = []
     for raw in punishes[punishes.end >= today].sort_values("end").to_dict("records"):
         release = _shift(seq, pd.Timestamp(raw["end"]), 1)
@@ -100,13 +107,29 @@ def _current(
         sell = _shift(seq, release, -1)
         if buy is None or sell is None:
             continue
+        # 不編號的措施(人工管制撮合)不在研究樣本裡,不該掛第一次處置的統計
+        if raw["measure"] not in NUMBERED_MEASURES:
+            continue
         nth = SECOND if raw["measure"] == "第二次處置" else 1
-        hist = runs[runs.nth == nth]
+        # 「同類」要包含同一個市場 —— 上櫃的流動性和滑價和上市不同,
+        # 那正是 universe.py 說一定要能分市場看的理由
+        mine = market_of.get(str(raw["code"]), "?")
+        same = runs[(runs.nth == nth) & (runs.code.map(market_of) == mine)]
+        pooled = len(same) < MIN_SAMPLES
+        hist = runs[runs.nth == nth] if pooled else same
         stat = summarise(hist, "excess")
         split = win_loss(hist, "excess")
+        # summarise/win_loss 樣本不足時回空字典。分市場篩選之後這變得碰得到
+        # —— 一個新市場的第一檔就會落在這裡,而缺欄位的卡片比沒有卡片更糟
+        if not stat or not split:
+            continue
         rows.append(
             {
                 "code": int(raw["code"]),
+                "market": mine,
+                # 同市場樣本不足而退回混合時要講出來,不然讀的人會以為
+                # 那是同市場的統計
+                "histPooled": pooled,
                 "name": str(raw["name"]),
                 "measure": str(raw["measure"]),
                 "condition": str(raw["condition"]),
@@ -155,6 +178,11 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
     # 注意股公告目前只有上市。櫃買中心的注意股端點還沒接,所以這個數字
     # 是上市的,不是全市場的 —— coverage 裡會標明
     notices = pd.read_csv(OUT / "notices.csv", parse_dates=["day"])
+    # 代號 -> 市場。轉上市的股票兩邊都有公告,以上市為準(它現在在哪就算哪)
+    market_of = {
+        str(row["code"]): str(row["market"])
+        for row in punishes.sort_values("market").to_dict("records")
+    }
     index = index_series(RAW / "prices")
     days = trading_days(prices)
     numbered = punishes[punishes.nth > 0]
@@ -257,7 +285,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
                 ),
             },
         },
-        "current": _current(punishes, runs, seq, days.max(), today),
+        "current": _current(punishes, runs, seq, days.max(), today, market_of),
         "headline": summarise(runs, "excess"),
         "winloss": win_loss(runs, "excess"),
         "winlossSecond": win_loss(second, "excess"),
@@ -266,7 +294,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         "caps": caps,
         "afterRelease": summarise(after[~after.locked_up], "x5"),
         "rate": event_rate(runs),
-        "binomial": round(0.5 ** len(years), 4),
+        "binomial": _binomial(years),
         "monthly": [
             {"m": str(k), "n": int(v)}
             for k, v in numbered.groupby(numbered.announced.dt.to_period("M"))
@@ -276,6 +304,18 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         "offenders": _offenders(numbered),
         "dist": runs.excess.dropna().round(1).tolist(),
     }
+
+
+def _binomial(years: list[dict[str, Any]]) -> float | None:
+    """全部期間中位數都為正的話,那件事在虛無假設下的機率。
+
+    **有任何一個期間不是正的就回 None** —— 原本是直接 0.5 ** len(years),
+    從來沒檢查過符號。今天七個剛好都正,所以答案碰巧對;哪天有一個翻負,
+    頁面還是會印「七個期間全部為正 … 0.5⁷」,而上面的表格就擺著那個負數。
+    """
+    if not years or any(float(y["median"]) <= 0 for y in years):
+        return None
+    return round(0.5 ** len(years), 4)
 
 
 #: 價格路徑圖的橫軸:相對出關日的交易日偏移
@@ -336,12 +376,19 @@ def _by_market(
         market = label.get(key, "?")
         events[market] = events.get(market, 0) + 1
     out: dict[str, dict[str, int]] = {}
-    for market in sorted({*prices.market.unique(), *punishes.market.unique()}):
-        out[str(market)] = {
+    # "?" 也要列出來。原本只跑兩個市場的名字,所以配不到公告的事件會被
+    # 算進 events 然後整個消失 —— 分市場的加總就悄悄對不上總數了
+    names = {*prices.market.unique(), *punishes.market.unique(), *events}
+    for market in sorted(str(n) for n in names):
+        out[market] = {
             "codes": int(prices[prices.market == market].code.nunique()),
             "punishes": int((punishes.market == market).sum()),
-            "backtested": events.get(str(market), 0),
+            "backtested": events.get(market, 0),
         }
+    total = sum(v["backtested"] for v in out.values())
+    if total != len(runs):
+        msg = f"分市場的事件數 {total} 和總數 {len(runs)} 對不上:{out}"
+        raise ValueError(msg)
     return out
 
 

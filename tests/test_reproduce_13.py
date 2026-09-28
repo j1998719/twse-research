@@ -244,13 +244,14 @@ def test_換成框架的基準結論不變(both_benchmarks: dict) -> None:
 
 
 def test_兩種基準的差距不大(both_benchmarks: dict) -> None:
-    """實測 +1.87% vs +1.98% —— 基準的選擇不是這個發現的來源。
+    """實測 +1.87% vs +1.98%,差距 0.11 個百分點。
 
-    差距擴大到 1 個百分點以上就要回頭查:那代表結論開始依賴基準怎麼算,
-    而不是事件本身。
+    門檻是 0.4 而不是 1.0:樣本變成 2.4 倍之後中位數更穩,實際差距從上市
+    時代的 0.35 降到 0.11,留 1.0 等於有 9 倍的鬆動空間,中等程度的回歸
+    根本擋不住。
     """
     gap = both_benchmarks["new_median"] - both_benchmarks["old_median"]
-    assert abs(gap) < 1.0
+    assert abs(gap) < 0.4
 
 
 @pytest.fixture(scope="module")
