@@ -98,15 +98,27 @@ export interface Offender {
 	second: number;
 }
 
+export interface MarketCoverage {
+	codes: number;
+	punishes: number;
+	backtested: number;
+}
+
 export interface Report {
 	generated: string;
 	coverage: {
 		from: string;
 		to: string;
 		notices: number;
+		/** 注意股公告目前只有上市 —— 櫃買的端點還沒接 */
+		noticesMarket: string;
 		punishes: number;
 		tradingDays: number;
 		backtested: number;
+		codes: number;
+		/** 分市場的檔數、公告數、可回測事件數。上櫃的流動性和上市不同,
+		 *  一個分不出市場的涵蓋率等於把兩個不同的東西當成一個 */
+		markets: Record<string, MarketCoverage>;
 		dropped: { lookahead: number; fakeRelease: number };
 	};
 	current: Current[];

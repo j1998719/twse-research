@@ -22,6 +22,12 @@ say "抓公告(注意股與處置)"
 say "抓每日行情"
 .venv/bin/python -m src.fetch_prices 2020-01-01 "$TODAY" >>"$LOG" 2>&1
 
+say "抓上櫃行情與處置公告"
+# 上櫃佔了可回測事件的 58%(1,314 / 2,265)。漏掉它的話 build_report 會拿
+# 舊的上櫃資料去算,而且不會有任何跡象 —— 抓過的日子有快取,所以每天跑只會
+# 真的去抓新的那一天
+.venv/bin/python -m src.fetch_tpex 2020-01-01 "$TODAY" >>"$LOG" 2>&1
+
 say "抓三大法人"
 .venv/bin/python -m src.fetch_chips 2020-01-01 "$TODAY" >>"$LOG" 2>&1
 
@@ -36,5 +42,11 @@ say "算統計"
 say "建置網頁"
 npm run build >>"$LOG" 2>&1
 
-BACKTESTED=$(.venv/bin/python -c "import json;print(json.load(open('data/out/report.json'))['coverage']['backtested'])")
-say "=== 完成:$BACKTESTED 筆可回測事件,產出 data/out/index.html ==="
+SUMMARY=$(.venv/bin/python -c "
+import json
+c = json.load(open('data/out/report.json'))['coverage']
+by = c.get('markets') or {}
+parts = ' '.join(f\"{k}:{v['backtested']}\" for k, v in sorted(by.items()))
+print(f\"{c['backtested']} 筆可回測事件({parts})、{c.get('codes')} 檔\")
+")
+say "=== 完成:$SUMMARY,產出 data/out/index.html ==="

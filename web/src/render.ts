@@ -5,6 +5,7 @@ import { pct, pValue, sign, thousands } from "./format.ts";
 import type {
 	CapitalRow,
 	Current,
+	MarketCoverage,
 	Report,
 	Summary,
 	WinLoss,
@@ -54,9 +55,23 @@ function meta(report: Report): void {
 	fill("m-punish", thousands(c.punishes));
 	fill("m-days", thousands(c.tradingDays));
 	fill("m-bt", thousands(c.backtested));
+	fill("m-codes", thousands(c.codes));
+	fill("m-markets", marketBreakdown(c.markets));
 	fill("m-drop", String(c.dropped.lookahead + c.dropped.fakeRelease));
 	fill("m-gen", report.generated);
 	fill("rate", String(report.rate.每月平均 ?? "—"));
+}
+
+/** 分市場的事件數。看到 2,265 筆的人要知道那裡面有多少是上櫃的。 */
+function marketBreakdown(markets: Record<string, MarketCoverage>): string {
+	const label: Record<string, string> = { twse: "上市", otc: "上櫃" };
+	const parts = Object.entries(markets)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(
+			([key, m]) =>
+				`${label[key] ?? key} ${thousands(m.backtested)}(${thousands(m.codes)} 檔)`,
+		);
+	return parts.join(" · ") || "—";
 }
 
 function card(item: Current): string {
