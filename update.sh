@@ -60,6 +60,7 @@ step "抓長期日線" .venv/bin/python -m src.fetch_history 2016-01-01 "$TODAY"
 step "抓除權息、減資、變更面額" .venv/bin/python -m src.fetch_actions 2016-01-01 "$TODAY"
 step "算大戶持股" .venv/bin/python -m src.build_bigholders
 step "建置大戶持股頁" npm run build:holders
+step "發布大戶持股頁到 GitHub Pages" ./publish_pages.sh
 
 # 這兩步要擋:資料不齊時不要拿壞掉的結果蓋掉好的報告
 say "算統計"

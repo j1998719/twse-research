@@ -1,5 +1,8 @@
 pre-push:
   parallel: true
+  # gh-pages 只有建好的網頁,沒有原始碼可以檢查(publish_pages.sh)
+  skip:
+    - ref: gh-pages
   commands:
     pyver:
       run: make pyver
