@@ -388,3 +388,184 @@ footer {
 		transform: translateY(-2px);
 	}
 }
+
+/* ── 大戶持股排行 ────────────────────────────────────────── */
+/* 給長輩看:字放大、按鈕夠大,手機上不用放大就點得到 */
+.holders {
+	font-size: 17px;
+}
+.holders table {
+	font-size: 16px;
+	min-width: 0;
+}
+/* tr 寫出來是為了特異度不低於前面的 tbody tr:last-child td */
+.holders tbody tr td,
+.holders thead tr th {
+	padding: 10px 8px;
+}
+.holders thead tr th {
+	font-size: 13px;
+	letter-spacing: 0.04em;
+}
+.holders td:nth-child(2) {
+	text-align: left;
+}
+.holders .rank {
+	color: var(--muted);
+	font-size: 13px;
+}
+.holders .strong {
+	font-weight: 700;
+}
+.holders .mk {
+	margin-left: 6px;
+	font-size: 12px;
+}
+.controls {
+	display: grid;
+	gap: 14px;
+	margin-top: 8px;
+}
+.controls .row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 18px;
+	align-items: end;
+}
+.controls label {
+	display: grid;
+	gap: 4px;
+	font-size: 14px;
+	color: var(--muted);
+}
+.controls .grow {
+	flex: 1 1 220px;
+}
+.controls select,
+.controls input,
+.seg button,
+.more {
+	font: inherit;
+	font-size: 17px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 8px 12px;
+	min-height: 44px;
+}
+.controls input {
+	width: 100%;
+}
+.seg {
+	border: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.seg .label {
+	font-weight: 700;
+	margin-right: 4px;
+}
+.seg button {
+	cursor: pointer;
+}
+.seg button[aria-pressed="true"] {
+	background: var(--ink);
+	color: var(--surface);
+	border-color: var(--ink);
+}
+.count {
+	margin: 0;
+	color: var(--muted);
+	font-size: 14px;
+}
+.more {
+	display: block;
+	width: 100%;
+	margin-top: 16px;
+	cursor: pointer;
+}
+.more[hidden] {
+	display: none;
+}
+/* 手機上收掉次要的兩欄,表格才不用左右滑 */
+@media (max-width: 640px) {
+	.holders .opt {
+		display: none;
+	}
+	.holders tbody tr td,
+	.holders thead tr th {
+		padding: 9px 5px;
+	}
+	.holders table {
+		font-size: 15px;
+	}
+}
+
+/* 區塊標題列:標題在左、篩選在右上角 */
+.section-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+}
+.filter {
+	position: relative;
+}
+.filter summary {
+	list-style: none;
+	cursor: pointer;
+	font-size: 17px;
+	padding: 8px 14px;
+	min-height: 44px;
+	display: flex;
+	align-items: center;
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	background: var(--surface);
+}
+.filter summary::-webkit-details-marker {
+	display: none;
+}
+.filter summary::before {
+	content: "▾ ";
+	margin-right: 4px;
+}
+.filter[open] summary {
+	border-color: var(--ink);
+}
+.filter-menu {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 6px);
+	z-index: 2;
+	min-width: 220px;
+	padding: 12px 16px;
+	background: var(--surface);
+	border: 1.5px solid var(--ink);
+	border-radius: 6px;
+	box-shadow: var(--shadow);
+	display: grid;
+	gap: 10px;
+}
+.filter-menu p {
+	margin: 0;
+	font-size: 13px;
+}
+.filter-menu label {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 17px;
+	min-height: 36px;
+	cursor: pointer;
+}
+.filter-menu input {
+	width: 20px;
+	height: 20px;
+}

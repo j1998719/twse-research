@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大戶持股排行</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>/* __STYLES__ */</style>
+
+<div class="wrap holders">
+ <header class="masthead">
+  <div class="eyebrow">上市 + 上櫃普通股 · 集保股權分散表</div>
+  <h1>大戶持股排行</h1>
+  <p class="dek">哪些股票的大戶拿得最多、這一週有沒有變多。「大戶」要多少張才算沒有標準答案,下面可以切換。</p>
+  <div class="meta">
+   <span>集保資料 <b id="m-day"></b><span id="m-prev" class="qual"></span></span>
+   <span>收盤價 <b id="m-price"></b></span>
+   <span>更新 <b id="m-gen"></b></span>
+  </div>
+ </header>
+
+ <section>
+  <div class="controls">
+   <fieldset class="seg" aria-label="大戶門檻">
+    <span class="label">大戶 =</span>
+    <button type="button" data-level="0">400 張以上</button>
+    <button type="button" data-level="1">600 張以上</button>
+    <button type="button" data-level="2">800 張以上</button>
+    <button type="button" data-level="3">1000 張以上</button>
+   </fieldset>
+   <div class="row">
+    <label>排序
+     <select id="sort">
+      <option value="pct">大戶持股比例</option>
+      <option value="delta" id="sort-delta">比上週增加最多</option>
+      <option value="people">大戶人數</option>
+      <option value="change">今天漲跌</option>
+     </select>
+    </label>
+    <label>市場
+     <select id="market">
+      <option value="all">全部</option>
+      <option value="twse">上市</option>
+      <option value="otc">上櫃</option>
+     </select>
+    </label>
+    <label>成交量至少
+     <select id="min-lots">
+      <option value="0">不限</option>
+      <option value="100" selected>100 張</option>
+      <option value="500">500 張</option>
+      <option value="1000">1000 張</option>
+     </select>
+    </label>
+    <label class="grow">搜尋
+     <input id="q" type="search" inputmode="search" placeholder="代號或股名,例如 2330 或 台積電">
+    </label>
+   </div>
+   <p class="count" id="count"></p>
+  </div>
+
+  <p class="note" id="no-prev" hidden>目前只有一週的集保資料,所以還沒有「比上週」。每週存一份之後,下週起就會有。</p>
+
+  <div class="scroll">
+   <table class="rank-table">
+    <thead><tr>
+     <th>#</th><th>股票</th><th>收盤</th><th>漲跌</th>
+     <th id="th-big">大戶持股</th><th>比上週</th>
+     <th class="opt">大戶人數</th><th class="opt">成交張數</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+   </table>
+  </div>
+  <button type="button" class="more" id="more" hidden></button>
+ </section>
+
+ <section id="ma-section">
+  <div class="section-head">
+   <h2>跌破長期均線</h2>
+   <details class="filter" id="ma-filter">
+    <summary>篩選</summary>
+    <div class="filter-menu">
+     <p class="qual">收盤價低於勾選的<b>每一條</b>線</p>
+     <label><input type="checkbox" id="f-ma10y" checked> 十年線以下</label>
+     <label><input type="checkbox" id="f-ma5y"> 五年線以下</label>
+    </div>
+   </details>
+  </div>
+  <p class="count" id="ma-count"></p>
+  <p class="note" id="ma-pending" hidden>長期均線還在準備中:十年線要十年的還原股價,資料還沒補齊。</p>
+  <div class="scroll" id="ma-table">
+   <table class="rank-table">
+    <thead><tr>
+     <th>#</th><th>股票</th><th>收盤</th>
+     <th class="opt">五年線</th><th>距五年線</th>
+     <th class="opt">十年線</th><th>距十年線</th>
+     <th class="opt">千張大戶</th>
+    </tr></thead>
+    <tbody id="ma-rows"></tbody>
+   </table>
+  </div>
+  <button type="button" class="more" id="ma-more" hidden></button>
+ </section>
+
+ <div class="note">
+  <h3>怎麼看</h3>
+  <p style="margin:0"><b>大戶持股</b>是持有超過門檻張數的股東,合計佔全部集保股數的比例。<b>比上週</b>是這個比例增加或減少幾個百分點 —— 例如 49% 變成 50% 是 +1.00。<br>
+  集保每週五公布一次(資料日期是週五),所以大戶數字一週才變一次;收盤價是每個交易日更新。<br>
+  大戶比例高的公司,很多只是董監事或集團本來就持有大部分股份,不代表有人在買。<b>週變化</b>比絕對比例更能看出動向。成交量太小的股票預設不顯示,因為它們的大戶比例常常天生就很高。<br>
+  <b>五年線、十年線</b>是最近 1,200 / 2,400 個交易日(台股習慣一年算 240 日)收盤價的平均,用<b>還原股價</b>算 —— 除權息、減資造成的價格跳空已經還原,不會因為配息就「看起來」跌破。上市不滿五年或十年的股票沒有那條線,不會出現在清單裡。</p>
+ </div>
+
+ <footer>
+  資料來源:臺灣集中保管結算所「集保戶股權分散表」、臺灣證券交易所與證券櫃檯買賣中心每日收盤行情。只含上市與上櫃普通股,已排除 ETF、權證、特別股。<br>
+  這是公開資料的整理,不是投資建議。
+ </footer>
+</div>
+
+<script>/* __SCRIPT__ */</script>

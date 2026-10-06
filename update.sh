@@ -1,5 +1,5 @@
 #!/bin/bash
-# 每日更新:抓資料 → 算統計 → 建置網頁。
+# 每日更新:抓資料 → 算統計 → 建置網頁(處置股觀測、大戶持股排行)。
 #
 # 設計成可以重複執行 —— 抓過的日子有快取,重跑很快。
 # 任何一步失敗就中止,不要拿壞掉的資料蓋掉好的。
@@ -51,6 +51,15 @@ step "存集保股權分散快照" .venv/bin/python -m src.fetch_tdcc
 # 舊的上櫃資料去算,而且不會有任何跡象 —— 抓過的日子有快取,所以每天跑只會
 # 真的去抓新的那一天
 step "抓上櫃行情與處置公告" .venv/bin/python -m src.fetch_tpex 2020-01-01 "$TODAY"
+
+# 大戶持股頁跟處置股報告互不相干,所以放在會中止的那兩步之前,
+# 而且失敗只記錄 —— 處置股報告壞掉不該讓大戶頁也停在舊的那一天
+# 長期均線:2016 起的日線和還原因子。第一次跑要補 2016-2019 約一千個交易日,
+# 之後只抓新的那一天。fetch_actions 有任何一段失敗就不寫檔,保留上一份
+step "抓長期日線" .venv/bin/python -m src.fetch_history 2016-01-01 "$TODAY"
+step "抓除權息、減資、變更面額" .venv/bin/python -m src.fetch_actions 2016-01-01 "$TODAY"
+step "算大戶持股" .venv/bin/python -m src.build_bigholders
+step "建置大戶持股頁" npm run build:holders
 
 # 這兩步要擋:資料不齊時不要拿壞掉的結果蓋掉好的報告
 say "算統計"

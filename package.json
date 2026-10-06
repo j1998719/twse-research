@@ -2,14 +2,15 @@
 	"name": "twse-research-web",
 	"private": true,
 	"version": "0.1.0",
-	"description": "處置股觀測網頁的渲染層",
+	"description": "處置股觀測與大戶持股排行網頁的渲染層",
 	"engines": {
 		"node": ">=22 <23"
 	},
 	"scripts": {
 		"build": "node --experimental-strip-types web/build.ts",
 		"check": "biome check . && tsc --noEmit",
-		"fix": "biome check --write ."
+		"fix": "biome check --write .",
+		"build:holders": "node --experimental-strip-types web/build.ts holders"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.13",

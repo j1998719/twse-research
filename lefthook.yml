@@ -1,6 +1,8 @@
 pre-push:
   parallel: true
   commands:
+    pyver:
+      run: make pyver
     ruff-lint:
       run: .venv/bin/ruff check .
     ruff-format:

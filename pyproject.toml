@@ -2,7 +2,7 @@
 name = "twse-research"
 version = "0.1.0"
 description = "台股注意股／處置股資料與回測"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 
 # ─────────────────────────── Ruff ───────────────────────────
 [tool.ruff]
@@ -100,6 +100,7 @@ lines-after-imports = 2
 "src/fetch_*.py" = ["T201"]
 "src/run_*.py" = ["T201"]
 "src/build_report.py" = ["T201"]
+"src/build_bigholders.py" = ["T201"]
 
 [tool.ruff.format]
 docstring-code-format = true

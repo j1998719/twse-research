@@ -5,10 +5,14 @@
 ## 開始
 
 ```bash
-python3.13 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+uv venv                   # 讀 .python-version,版本不對會自己下載
+uv pip install -r requirements.txt
 lefthook install          # 裝 pre-push 檢查,clone 下來要自己跑一次
 ```
+
+Python 版本定在 `.python-version`(3.13),Node 定在 `.nvmrc`。`pyproject.toml` 的
+`requires-python` 和 Ruff 的 `target-version` 都跟著它 —— Ruff 只決定用哪一版的語法規則
+來檢查,不會管實際跑的是哪一版,所以 `make pyver`(pre-push 也會跑)另外檢查 `.venv` 的版本。
 
 ## 常用指令
 
@@ -47,6 +51,18 @@ artifact 的 CSP 禁止外部腳本,只有 Google Fonts 例外。
 所以 `web/src/report.ts` 的 `REQUIRED_KEYS` 是單一來源,
 `tests/test_report_contract.py` 會比對實際輸出;
 `parseReport()` 在執行期再檢查一次,缺欄位直接報錯而不是顯示 undefined。
+
+### 大戶持股排行
+
+```bash
+make holders  # 用最新兩份集保快照與收盤行情產生 data/out/holders.html
+```
+
+列出上市與上櫃普通股的大戶持股比例,門檻可在 400 / 600 / 800 / 1000 張之間切換,
+也可以依週變化、大戶人數、當日漲跌排序。給不寫程式的人用,所以字放大、手機可讀。
+
+「比上週」需要兩份快照。集保只提供最新一週,所以第一週只有絕對比例,
+要等 cron 存到第二份之後才有週變化。
 
 ## 每日自動更新
 
