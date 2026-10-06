@@ -74,14 +74,15 @@ GitHub Pages 一兩分鐘內就會更新。
 ./update.sh   # 抓資料 → 算統計 → 建置網頁,約兩分鐘(有快取)
 ```
 
-已設定 cron,週一到五 18:00 自動執行:
+已設定 cron,每天台灣時間 08:00 執行(本機時區是 Asia/Taipei,cron 用本機時間):
 
 ```
-0 18 * * 1-5 ~/twse-research/update.sh >> ~/twse-research/data/cron.log 2>&1
+0 8 * * * $HOME/twse-research/update.sh >> $HOME/twse-research/data/cron.log 2>&1
 ```
 
-排在 18:00 是因為台股 13:30 收盤,證交所的盤後資料(注意股、處置、法人買賣超)
-約 15:00 前後才齊全,留兩三小時的餘裕。
+排在早上是因為前一天的盤後資料(注意股、處置、法人買賣超)前一晚就齊了,而集保股權分散
+是週五盤後公布,週末也照跑,才不會漏掉那一週的快照。GitHub 推送用的 SSH 金鑰沒有密碼,
+cron 在背景也推得上去。
 
 腳本用 `set -euo pipefail`,任何一步失敗就中止 —— 不要拿抓了一半的資料
 蓋掉前一天正常的輸出。
@@ -91,10 +92,8 @@ GitHub Pages 一兩分鐘內就會更新。
 
 ### 自動化到哪裡為止
 
-這是**刻意的半自動**:
-
-- cron 每天自動更新資料並產生 `data/out/index.html`
-- 發布到網址是手動的 —— 要看的時候再請 Claude 發布一次
-
-評估過 Cloudflare Pages 之類的靜態託管可以做到全自動,但要多一組憑證和權限設定。
-以「偶爾看一次」的使用頻率來說,那個成本不划算。哪天需要天天看再說。
+- **大戶持股排行**(`holders.html`):全自動。cron 跑完 `update.sh` 會用 `publish_pages.sh`
+  推到 GitHub Pages(<https://j1998719.github.io/twse-research/>),要給爸爸天天看,所以
+  2026-10 改成全自動。用 repo 自己的 Pages,不用另外申請憑證。
+- **處置股觀測**(`index.html`):仍然是半自動 —— cron 每天產生,要看的時候再請 Claude
+  發布一次。
