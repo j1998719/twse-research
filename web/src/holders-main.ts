@@ -206,6 +206,32 @@ function bind(): void {
 	});
 }
 
+const TABS = ["holders", "ma"] as const;
+type Tab = (typeof TABS)[number];
+
+/** 一次只顯示一份清單。網址的 #ma 可以直接打開均線那一頁 */
+function showTab(tab: Tab): void {
+	for (const name of TABS) {
+		const selected = name === tab;
+		el(`tab-${name}`).setAttribute("aria-selected", String(selected));
+		el(name === "ma" ? "ma-section" : "holders-section").hidden = !selected;
+	}
+}
+
+function bindTabs(): void {
+	for (const name of TABS) {
+		el(`tab-${name}`).addEventListener("click", () => {
+			showTab(name);
+			try {
+				history.replaceState(null, "", name === "ma" ? "#ma" : "#");
+			} catch {
+				// 有些檢視器不讓改網址,不影響切換
+			}
+		});
+	}
+	showTab(location.hash === "#ma" ? "ma" : "holders");
+}
+
 function main(): void {
 	data = parseHolders(HOLDERS_DATA);
 	latestDay = data.rows.reduce((max, r) => (r.day > max ? r.day : max), "");
@@ -226,6 +252,7 @@ function main(): void {
 	}
 	bind();
 	bindMa();
+	bindTabs();
 	draw();
 	drawMa();
 }

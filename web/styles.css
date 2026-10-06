@@ -571,3 +571,35 @@ footer {
 	width: 20px;
 	height: 20px;
 }
+
+/* 分頁:兩份清單同一頁,點上面的按鈕切換 */
+.tabs {
+	display: flex;
+	gap: 8px;
+	margin-top: 22px;
+	border-bottom: 1.5px solid var(--ink);
+}
+.tabs button {
+	font: inherit;
+	font-size: 17px;
+	font-weight: 700;
+	color: var(--muted);
+	background: none;
+	border: 1.5px solid transparent;
+	border-bottom: 0;
+	border-radius: 6px 6px 0 0;
+	padding: 10px 16px;
+	min-height: 48px;
+	margin-bottom: -1.5px;
+	cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+	color: var(--ink);
+	background: var(--surface);
+	border-color: var(--ink);
+	border-bottom: 1.5px solid var(--surface);
+}
+.tabs button:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}

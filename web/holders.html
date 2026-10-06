@@ -18,7 +18,12 @@
   </div>
  </header>
 
- <section>
+ <div class="tabs" role="tablist" aria-label="切換清單">
+  <button type="button" role="tab" id="tab-holders" aria-controls="holders-section" data-tab="holders">大戶持股排行</button>
+  <button type="button" role="tab" id="tab-ma" aria-controls="ma-section" data-tab="ma">跌破長期均線</button>
+ </div>
+
+ <section id="holders-section" role="tabpanel" aria-labelledby="tab-holders">
   <div class="controls">
    <fieldset class="seg" aria-label="大戶門檻">
     <span class="label">大戶 =</span>
@@ -73,7 +78,7 @@
   <button type="button" class="more" id="more" hidden></button>
  </section>
 
- <section id="ma-section">
+ <section id="ma-section" role="tabpanel" aria-labelledby="tab-ma">
   <div class="section-head">
    <h2>跌破長期均線</h2>
    <details class="filter" id="ma-filter">
@@ -86,7 +91,7 @@
    </details>
   </div>
   <p class="count" id="ma-count"></p>
-  <p class="note" id="ma-pending" hidden>長期均線還在準備中:十年線要十年的還原股價,資料還沒補齊。</p>
+  <p class="note" id="ma-pending" hidden>長期均線還在準備中:十年線要用十年的還原股價來算,這些歷史資料正在下載,補齊後這裡就會出現清單。</p>
   <div class="scroll" id="ma-table">
    <table class="rank-table">
     <thead><tr>
