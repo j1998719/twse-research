@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
@@ -261,7 +262,13 @@ def fetch(source: Source, start: date, end: date) -> dict[str, Any]:
 
 
 def cached(
-    source: Source, start: date, end: date, cache_dir: Path, *, today: date
+    source: Source,
+    start: date,
+    end: date,
+    cache_dir: Path,
+    *,
+    today: date,
+    pause: float = 1.0,
 ) -> dict[str, Any]:
     """抓一段期間並存快取。期間還沒結束的不存 —— 之後還會有新的事件。"""
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -270,6 +277,8 @@ def cached(
         hit: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return hit
     payload = fetch(source, start, end)
+    # 櫃買按月查,十年是幾百個請求 —— 每個之間停一下,不要連續打
+    time.sleep(pause)
     if not complete(payload):
         msg = f"{source.kind} {start}~{end} 被截斷了,要把期間切小"
         raise ValueError(msg)
