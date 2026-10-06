@@ -1,0 +1,5382 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>處置股觀測</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>:root {
+	--ground: #eef1eb;
+	--surface: #fbfcfa;
+	--sunken: #e4e8e1;
+	--ink: #161a17;
+	--muted: #5e6b64;
+	--hair: #cdd5cb;
+	--brass: #8f6318;
+	--brass-soft: #e8dcc2;
+	--up: #be3327;
+	--down: #126b4a;
+	--shadow:
+		0 1px 2px rgba(20, 28, 22, 0.05), 0 14px 34px -22px rgba(20, 28, 22, 0.45);
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+		--ground: #121619;
+		--surface: #1a1f23;
+		--sunken: #0d1113;
+		--ink: #e7ebe6;
+		--muted: #8b9891;
+		--hair: #2c343a;
+		--brass: #d5a244;
+		--brass-soft: #3a3121;
+		--up: #e3655a;
+		--down: #3faa7e;
+		--shadow:
+			0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -20px rgba(0, 0, 0, 0.8);
+	}
+}
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--ground: #121619;
+	--surface: #1a1f23;
+	--sunken: #0d1113;
+	--ink: #e7ebe6;
+	--muted: #8b9891;
+	--hair: #2c343a;
+	--brass: #d5a244;
+	--brass-soft: #3a3121;
+	--up: #e3655a;
+	--down: #3faa7e;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -20px rgba(0, 0, 0, 0.8);
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	background: var(--ground);
+	color: var(--ink);
+	font-family: "Noto Sans TC", system-ui, sans-serif;
+	font-size: 15px;
+	line-height: 1.75;
+	-webkit-font-smoothing: antialiased;
+}
+.wrap {
+	max-width: 960px;
+	margin: 0 auto;
+	padding: clamp(28px, 5vw, 64px) clamp(18px, 4vw, 34px) 96px;
+}
+h1,
+h2,
+h3 {
+	font-family: "Noto Serif TC", serif;
+	text-wrap: balance;
+	margin: 0;
+}
+.num {
+	font-family: "IBM Plex Mono", ui-monospace, monospace;
+	font-variant-numeric: tabular-nums;
+}
+.masthead {
+	border-top: 3px solid var(--ink);
+	padding-top: 18px;
+}
+.eyebrow {
+	font-size: 11.5px;
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	color: var(--brass);
+	font-weight: 700;
+	margin-bottom: 12px;
+}
+h1 {
+	font-size: clamp(30px, 5.4vw, 46px);
+	line-height: 1.22;
+	letter-spacing: -0.01em;
+}
+.dek {
+	color: var(--muted);
+	font-size: 15.5px;
+	margin-top: 12px;
+	max-width: 62ch;
+}
+.meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 22px;
+	margin-top: 22px;
+	padding-top: 14px;
+	border-top: 1px solid var(--hair);
+	font-size: 12.5px;
+	color: var(--muted);
+}
+/* 欄位旁的限定語(例如注意股只有上市)。比數字小、比說明大 */
+.qual {
+	font-size: 0.82em;
+	opacity: 0.62;
+	margin-left: 0.15em;
+}
+
+.meta b {
+	color: var(--ink);
+	font-weight: 600;
+}
+section {
+	margin-top: 56px;
+}
+h2 {
+	font-size: 21px;
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+}
+h2::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--hair);
+}
+.lede {
+	color: var(--muted);
+	margin: 10px 0 24px;
+	max-width: 64ch;
+}
+.verdict {
+	background: var(--surface);
+	border: 1px solid var(--hair);
+	border-top: 3px solid var(--brass);
+	border-radius: 3px;
+	padding: 26px 28px;
+	box-shadow: var(--shadow);
+}
+.verdict p {
+	margin: 0 0 14px;
+	max-width: 62ch;
+}
+.verdict p:last-child {
+	margin-bottom: 0;
+}
+.verdict strong {
+	color: var(--brass);
+}
+.board {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+}
+.cell {
+	background: var(--surface);
+	border: 1px solid var(--hair);
+	border-radius: 3px;
+	border-left: 4px solid var(--down);
+	padding: 16px 18px;
+	box-shadow: var(--shadow);
+}
+.cell.second {
+	border-left-color: var(--up);
+}
+.cell-top {
+	display: flex;
+	align-items: baseline;
+	gap: 9px;
+}
+.code {
+	font-size: 13px;
+	color: var(--muted);
+}
+.nm {
+	font-family: "Noto Serif TC", serif;
+	font-size: 19px;
+	font-weight: 700;
+}
+.tag {
+	margin-left: auto;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 3px 9px;
+	border-radius: 2px;
+	background: var(--sunken);
+	color: var(--muted);
+	white-space: nowrap;
+}
+.cell.second .tag {
+	background: var(--up);
+	color: #fff;
+}
+/* #30 研究中的候選:卡片標籤、警語、條件清單 */
+.cell .tag.cand {
+	margin-left: 6px;
+	background: var(--brass);
+	color: var(--surface);
+}
+.cand-note {
+	color: var(--brass);
+	font-weight: 700;
+}
+.warn {
+	margin: 0 0 18px;
+	padding: 14px 18px;
+	border-left: 4px solid var(--up);
+	background: var(--sunken);
+	font-size: 14px;
+	line-height: 1.7;
+}
+.conds {
+	margin: 0 0 18px;
+	padding-left: 1.4em;
+	font-size: 14px;
+	line-height: 1.8;
+}
+.fine {
+	font-size: 12.5px;
+	color: var(--muted);
+	max-width: 64ch;
+}
+.why {
+	font-size: 12.5px;
+	color: var(--muted);
+	margin-top: 7px;
+	line-height: 1.6;
+}
+.countdown {
+	display: flex;
+	align-items: baseline;
+	gap: 7px;
+	margin-top: 13px;
+	padding-top: 12px;
+	border-top: 1px solid var(--hair);
+}
+.countdown .big {
+	font-size: 29px;
+	font-weight: 600;
+	line-height: 1;
+}
+.countdown small {
+	font-size: 12px;
+	color: var(--muted);
+}
+.plan {
+	margin-top: 12px;
+	padding-top: 11px;
+	border-top: 1px solid var(--hair);
+	font-size: 12.5px;
+}
+.plan dl {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 3px 10px;
+	margin: 0;
+}
+.plan dt {
+	color: var(--muted);
+}
+.plan dd {
+	margin: 0;
+	text-align: right;
+	font-family: "IBM Plex Mono", monospace;
+	font-variant-numeric: tabular-nums;
+}
+.state {
+	display: inline-block;
+	font-size: 10.5px;
+	font-weight: 700;
+	padding: 2px 8px;
+	border-radius: 2px;
+	margin-top: 9px;
+}
+.state.now {
+	background: var(--up);
+	color: #fff;
+}
+.state.hold {
+	background: var(--brass);
+	color: #fff;
+}
+.state.wait {
+	background: var(--sunken);
+	color: var(--muted);
+}
+.state.past {
+	background: var(--sunken);
+	color: var(--muted);
+}
+.ev {
+	color: var(--up);
+	font-weight: 700;
+}
+figure {
+	margin: 26px 0 0;
+}
+canvas {
+	width: 100%;
+	height: auto;
+	display: block;
+}
+figcaption {
+	font-size: 12.5px;
+	color: var(--muted);
+	margin-top: 12px;
+	max-width: 64ch;
+}
+.key {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 18px;
+	margin-top: 14px;
+	font-size: 12.5px;
+	color: var(--muted);
+}
+.key i {
+	display: inline-block;
+	width: 22px;
+	height: 3px;
+	vertical-align: middle;
+	margin-right: 7px;
+}
+.scroll {
+	overflow-x: auto;
+	margin-top: 22px;
+}
+table {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 14px;
+	min-width: 520px;
+}
+th,
+td {
+	padding: 10px 12px;
+	text-align: right;
+	border-bottom: 1px solid var(--hair);
+	white-space: nowrap;
+}
+th:first-child,
+td:first-child {
+	text-align: left;
+}
+thead th {
+	font-size: 11px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted);
+	font-weight: 700;
+	border-bottom: 1.5px solid var(--ink);
+}
+tr.bear td {
+	background: var(--brass-soft);
+}
+tr.total td {
+	border-top: 1.5px solid var(--ink);
+	font-weight: 700;
+}
+tbody tr:last-child td {
+	border-bottom: none;
+}
+.neg {
+	color: var(--down);
+	font-weight: 600;
+}
+.pos {
+	color: var(--up);
+	font-weight: 600;
+}
+.win {
+	color: var(--muted);
+}
+.sig {
+	color: var(--brass);
+	font-weight: 700;
+}
+.note {
+	margin-top: 26px;
+	padding: 18px 20px;
+	background: var(--brass-soft);
+	border-radius: 3px;
+	font-size: 13.5px;
+	line-height: 1.72;
+}
+.note h3 {
+	font-size: 14px;
+	margin-bottom: 8px;
+}
+.note ol,
+.note ul {
+	margin: 0;
+	padding-left: 20px;
+}
+.note li {
+	margin-bottom: 6px;
+}
+.note li:last-child {
+	margin-bottom: 0;
+}
+footer {
+	margin-top: 64px;
+	padding-top: 20px;
+	border-top: 1px solid var(--hair);
+	font-size: 12.5px;
+	color: var(--muted);
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cell {
+		transition: transform 0.18s ease;
+	}
+	.cell:hover {
+		transform: translateY(-2px);
+	}
+}
+
+/* ── 大戶持股排行 ────────────────────────────────────────── */
+/* 給長輩看:字放大、按鈕夠大,手機上不用放大就點得到 */
+.holders {
+	font-size: 17px;
+}
+.holders table {
+	font-size: 16px;
+	min-width: 0;
+}
+/* tr 寫出來是為了特異度不低於前面的 tbody tr:last-child td */
+.holders tbody tr td,
+.holders thead tr th {
+	padding: 10px 8px;
+}
+.holders thead tr th {
+	font-size: 13px;
+	letter-spacing: 0.04em;
+}
+.holders th:nth-child(2),
+.holders td:nth-child(2) {
+	text-align: left;
+}
+/* 金額、比例模式下這一檔用的級距(#55):放在數字下一行,數字才會對齊 */
+.holders .tier {
+	display: block;
+	font-size: 11px;
+	color: var(--muted);
+	font-weight: 400;
+}
+.holders .rank {
+	color: var(--muted);
+	font-size: 13px;
+}
+.holders .strong {
+	font-weight: 700;
+}
+.holders .mk {
+	margin-left: 6px;
+	font-size: 12px;
+}
+.controls {
+	display: grid;
+	gap: 14px;
+	margin-top: 8px;
+}
+.controls .row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 18px;
+	align-items: end;
+}
+.controls label {
+	display: grid;
+	gap: 4px;
+	font-size: 14px;
+	color: var(--muted);
+}
+.controls .grow {
+	flex: 1 1 220px;
+}
+.controls select,
+.controls input,
+.seg button,
+.more {
+	font: inherit;
+	font-size: 17px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 8px 12px;
+	min-height: 44px;
+}
+.controls input {
+	width: 100%;
+}
+.seg {
+	border: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+/* 大戶定義(#55):張數按鈕、或金額 / 比例輸入框 */
+.seg-buttons,
+.big-free {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+/* .controls label 是直排(標題在上、欄位在下),這一個要橫排:≥ 數字 單位 */
+.controls .big-free {
+	display: flex;
+	flex-direction: row;
+	color: var(--ink);
+	font-size: 17px;
+}
+/* 要寫在上面那條 display: flex 之後、特異度也不能比較低,hidden 才藏得起來 */
+.controls .seg-buttons[hidden],
+.controls .big-free[hidden] {
+	display: none;
+}
+.controls .big-free input {
+	width: 9em;
+}
+#big-note {
+	margin: 0;
+	max-width: 62ch;
+}
+.seg .label {
+	font-weight: 700;
+	margin-right: 4px;
+}
+.seg button {
+	cursor: pointer;
+}
+.seg button[aria-pressed="true"] {
+	background: var(--ink);
+	color: var(--surface);
+	border-color: var(--ink);
+}
+.count {
+	margin: 0;
+	color: var(--muted);
+	font-size: 14px;
+}
+.more {
+	display: block;
+	width: 100%;
+	margin-top: 16px;
+	cursor: pointer;
+}
+.more[hidden] {
+	display: none;
+}
+/* 手機上收掉次要的兩欄,表格才不用左右滑 */
+@media (max-width: 640px) {
+	.holders .opt {
+		display: none;
+	}
+	.holders tbody tr td,
+	.holders thead tr th {
+		padding: 9px 5px;
+	}
+	.holders table {
+		font-size: 15px;
+	}
+}
+
+/* 網頁之間的導覽:GitHub Pages 上兩頁並列(publish_pages.sh) */
+.sitenav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 18px;
+}
+.sitenav a {
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--muted);
+	text-decoration: none;
+	padding: 8px 14px;
+	min-height: 40px;
+	display: inline-flex;
+	align-items: center;
+	border: 1.5px solid var(--hair);
+	border-radius: 999px;
+}
+.sitenav a:hover {
+	color: var(--ink);
+	border-color: var(--ink);
+}
+.sitenav a[aria-current="page"] {
+	color: var(--surface);
+	background: var(--ink);
+	border-color: var(--ink);
+}
+.sitenav a:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
+
+/* 連到 Yahoo 股市的股票名稱(#44、#46):看起來像文字,滑過才出現底線 */
+a.quote {
+	color: inherit;
+	text-decoration: none;
+}
+a.quote:hover .nm,
+a.quote:hover b,
+a.quote:focus-visible {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+a.quote:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
+/* 表格裡整格都可以點,手機上才好按 */
+.rank-table a.quote {
+	display: block;
+	padding-block: 4px;
+}
+
+/* 條件積木(#50):一列一個條件,勾選、比較、數值、移除。手機上一樣好按 */
+/* 我的條件模組(#57):上面是存好的組合,下面是這一組的內容 */
+.module {
+	display: grid;
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 10px;
+	min-width: 0;
+}
+.module-body {
+	display: grid;
+	gap: 16px;
+	padding: 16px;
+	min-width: 0;
+}
+.builder {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+.controls .add-pick {
+	justify-self: start;
+}
+.builder-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 12px;
+}
+.builder-title {
+	font-size: 17px;
+}
+.filters {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+}
+.filters li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--hair);
+}
+.filters input[type="checkbox"] {
+	width: 22px;
+	height: 22px;
+	accent-color: var(--brass);
+}
+.filters .what {
+	flex: 1 1 180px;
+	min-width: 0;
+	font-weight: 500;
+}
+.filters select,
+.filters input[type="number"],
+.builder select {
+	font: inherit;
+	font-size: 16px;
+	color: var(--ink);
+	background: var(--ground);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 6px 10px;
+	min-height: 40px;
+}
+.filters input[type="number"] {
+	width: 7em;
+	font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.filters .unit {
+	color: var(--muted);
+	font-size: 14px;
+	min-width: 2.5em;
+}
+.filters .remove {
+	font: inherit;
+	font-size: 20px;
+	line-height: 1;
+	width: 40px;
+	height: 40px;
+	color: var(--muted);
+	background: none;
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	cursor: pointer;
+}
+.filters .remove:hover {
+	color: var(--up);
+	border-color: var(--up);
+}
+.filters input:focus-visible,
+.filters select:focus-visible,
+.filters .remove:focus-visible,
+.builder select:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+}
+/* 停用的條件:文字劃掉。放在 .what / .unit 之後,特異度才不會倒過來 */
+.filters li.off .what,
+.filters li.off .unit {
+	color: var(--muted);
+	text-decoration: line-through;
+}
+
+/* 「過去 n 週」選單:跟大戶門檻同一排的設定 */
+.controls .weeks-pick {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-weight: 700;
+}
+.controls .weeks-pick select {
+	font: inherit;
+	font-size: 17px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 6px 10px;
+	min-height: 44px;
+}
+
+/* 我的條件:存過的一組一顆按鈕,點了就套用(#56) */
+.controls .presets {
+	border: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+/* 模組裡那一列要有內距和分隔線(#57);寫在 .controls .presets 之後 */
+.controls .module .presets {
+	padding: 14px 16px;
+	border-bottom: 1.5px solid var(--hair);
+}
+.controls .presets .label {
+	font-weight: 700;
+	color: var(--ink);
+	margin-right: 4px;
+}
+.controls .chips {
+	display: contents;
+}
+.controls .presets button,
+.controls .presets input {
+	font: inherit;
+	font-size: 16px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 999px;
+	padding: 6px 16px;
+	min-height: 44px;
+	cursor: pointer;
+}
+.controls .presets .chip[aria-pressed="true"] {
+	background: var(--ink);
+	color: var(--surface);
+	border-color: var(--ink);
+}
+.controls .presets .add {
+	border-style: dashed;
+	color: var(--muted);
+}
+.controls .presets .add:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.controls .presets button.link {
+	border: 0;
+	background: none;
+	padding: 6px 6px;
+	color: var(--brass);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.controls .p-form,
+.controls .p-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.controls .p-form[hidden],
+.controls .p-tools[hidden] {
+	display: none;
+}
+.controls .p-form input {
+	cursor: text;
+	border-radius: 6px;
+	width: 14em;
+	max-width: 100%;
+}
+.controls .presets button:focus-visible,
+.controls .presets input:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+}
+.controls .presets p {
+	flex-basis: 100%;
+	margin: 0;
+}
+.controls .presets p:empty {
+	display: none;
+}
+</style>
+
+<div class="wrap">
+ <nav class="sitenav" aria-label="網頁">
+  <a href="./">大戶持股</a>
+  <a href="disposition.html" aria-current="page">處置股觀測</a>
+ </nav>
+
+ <header class="masthead">
+  <div class="eyebrow">上市 + 上櫃普通股 · 2020–2026</div>
+  <h1>處置股觀測</h1>
+  <p class="dek">誰正在關禁閉、還剩幾天,以及七年三千多次處置告訴我們的事 —— 漲勢在出關<em>前</em>就結束了。</p>
+  <div class="meta">
+   <span>資料期間 <b id="m-range"></b></span>
+   <span>注意股 <b class="num" id="m-notice"></b> 筆<span id="m-notice-mk" class="qual"></span></span>
+   <span>處置 <b class="num" id="m-punish"></b> 次</span>
+   <span>交易日 <b class="num" id="m-days"></b></span>
+   <span>納入研究 <b class="num" id="m-bt"></b> 筆</span>
+   <span>分市場 <b id="m-markets"></b></span>
+   <span>股票 <b class="num" id="m-codes"></b> 檔</span>
+   <span>已排除 <b class="num" id="m-drop"></b> 筆</span>
+   <span>更新 <b id="m-gen"></b></span>
+  </div>
+ </header>
+
+ <section>
+  <h2>現在關著誰</h2>
+  <p class="lede">處置期間不能當沖,盤中改成約每兩分鐘一次集合競價。<strong>第二次處置</strong>的所有買賣都要預收款券 —— 資金不到位就下不了單。</p>
+  <div class="board" id="board"></div>
+  <div class="note">
+   <h3>卡片上的數字是歷史統計,不是預測</h3>
+   <p style="margin:0">「期望值」等是<strong>過去同類事件</strong>(同樣是第一次或第二次處置)的統計結果,不是對這一檔的預測。個股的實際結果可能落在分布的任何位置 —— 歷史最慘那一欄就是提醒:同類事件裡出現過這種幅度。<br>
+   <strong>2026-08-10 起處置縮短為 5 個營業日</strong>,公告在開始前一天盤後才發布,所以出關前第 6 個交易日通常還不知道會被處置;卡片上標「公告後最早」的,參考買點改成公告後第一個交易日。頁面上的歷史統計幾乎都是舊制(10 天)的樣本,新制的效果還沒有足夠樣本可以驗證。<br>買賣點由出關日往前推算。還沒到的交易日用<strong>證交所公告的休市日</strong>推算(週末和國定假日都扣掉);證交所臨時宣布休市(例如颱風假)時會差一天。</p>
+  </div>
+ </section>
+
+ <!-- #30:Jordan 2026-10-07 要放上網頁。警語不能拿掉:門檻是看過資料才定的 -->
+ <section id="candidate">
+  <h2>研究中的候選:第二次處置 × 流動性</h2>
+  <div class="warn" role="note"><strong>還沒驗證,不是建議。</strong>「2 億」這個門檻是看過同一批資料之後才找到的,數字很可能高估;要用之後的新資料往前驗證(累積約 60 筆)才算數。滑價也還沒實測。卡片上的「候選」只是標出符合條件的股票。</div>
+  <p class="lede">四個條件同時成立:</p>
+  <ol class="conds">
+   <li><strong>第二次處置</strong> —— 公告上寫的,公告當下就知道</li>
+   <li><strong>流動性夠</strong> —— 這一串處置的第一次開始之前 20 個交易日,每天成交金額的中位數 ≥ 2 億元(成交股數 × 收盤價)</li>
+   <li>出關前第 6 個交易日收盤買、前 1 個交易日收盤賣;漲停買不到、跌停賣不掉就順延</li>
+   <li>出關那天不在另一段處置期間裡(不是假出關)</li>
+  </ol>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>樣本</th><th>筆數</th><th>超額中位數</th><th>勝率</th><th>95% 信賴區間</th></tr></thead>
+    <tbody id="t-cand"></tbody>
+   </table>
+  </div>
+  <p class="lede">平均每月 <b class="num" id="cand-freq"></b> 筆。如果每一筆都照做,本金 <span class="num" id="cand-capital"></span> 萬、只用現金(第二次處置要全額預收,賣掉的錢 T+2 才能再用):</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>部位大小</th><th>年化</th><th>最大回檔</th><th>最長沒創新高</th></tr></thead>
+    <tbody id="t-cand-port"></tbody>
+   </table>
+  </div>
+  <p class="fine">報酬算法跟這頁其他地方一樣:扣掉來回 0.585% 成本與加權指數同期漲跌,持有期間遇到除權息、減資已還原。「每筆本金 10%」「每筆淨值 10%」跟本金大小無關。</p>
+ </section>
+
+ <section>
+  <h2>漲勢在出關前一日結束</h2>
+  <div class="verdict" id="verdict"></div>
+  <figure>
+   <canvas id="path" width="1840" height="620" aria-label="以出關日對齊的價格路徑"></canvas>
+   <figcaption>以出關日(t=0)為基準的超額累積報酬。價格在處置後半段往上走,<strong>出關前一日見頂,出關當天就回跌</strong>。這也解釋了為什麼「等出關再買」是最差的做法 —— 那是買在最高點的隔天。</figcaption>
+  </figure>
+ </section>
+
+
+ <section>
+  <h2>賺的時候賺多少,賠的時候賠多少</h2>
+  <p class="lede">勝率高不等於賺錢。57% 的勝率配上「小賺大賠」一樣是虧的,所以三個數字要一起看。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th></th><th>出關前進場</th><th>只看第二次處置</th><th>出關後才買</th></tr></thead>
+    <tbody id="t-wl"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>差別完全在勝率,不在賺賠比</h3>
+   <p style="margin:0">三組的賺賠比<span id="v-ratios"></span>,<strong>差距不大</strong>。出關前進場之所以賺、出關後之所以賠,差別在<strong>對的次數</strong>(<span id="v-winrates"></span>),不是因為賺的時候賺比較多。<br>
+   含意:要提高報酬該往<strong>提高勝率</strong>的方向找,而不是找大賺的機會。而停損停利可能沒有幫助 —— 賺賠比已經接近對稱,人為截斷反而可能破壞它。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>出場差一天,結果差一半</h2>
+  <p class="lede">同樣在出關前六個交易日買進,只改變賣出時點。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>賣出時點</th><th>樣本</th><th>超額中位數</th><th>勝率</th><th>p 值</th></tr></thead>
+    <tbody id="t-exit"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>賣在集合競價裡,這是最大的未知數</h3>
+   <p style="margin:0">出關前一日仍在處置期間,盤中是每兩分鐘撮合一次。這裡用的是日收盤價,<strong>實際賣價可能明顯低於收盤</strong>。上表的數字很可能被滑價吃掉一大塊,要用盤中資料才驗得出來。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>七年,七個市況</h2>
+  <p class="lede">會不會只是牛市產物?把資料拉到 2020 分年檢定。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>期間</th><th>樣本</th><th>超額中位數</th><th>勝率</th><th>p 值</th></tr></thead>
+    <tbody id="t-years"></tbody>
+   </table>
+  </div>
+  <div class="note" id="binomial"></div>
+ </section>
+
+ <section>
+  <h2>錢在市場裡的每一天</h2>
+  <p class="lede">事件研究算的是「每次事件平均會怎樣」,假設每次都有錢進場。實際上訊號會重疊,錢不夠就得跳過。下表只取<strong>第二次處置</strong>的訊號。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>本金</th><th>吃到</th><th>總報酬</th><th>年化</th><th>曝險天數</th><th>每曝險日</th><th>同時最多</th></tr></thead>
+    <tbody id="t-cap"></tbody>
+   </table>
+  </div>
+  <div class="note">
+   <h3>為什麼不把曝險調整後的報酬年化</h3>
+   <p style="margin:0">年化等於假設你能無限次重複部署,但<strong>事件頻率是固定的</strong>(每月約 <span class="num" id="rate"></span> 次),沒那麼多機會。所以這裡用「每一天曝險賺多少基點」跟大盤比,不做年化 —— 年化會算出四位數的假數字。</p>
+  </div>
+ </section>
+
+ <section>
+  <h2>慣犯</h2>
+  <p class="lede">同一檔反覆被處置。<strong>第二次</strong>那一欄越高,代表你進場時越可能遇到全額預收款券 —— 而第二次處置的報酬也明顯較好。</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>個股</th><th>總次數</th><th>其中第二次</th><th>第二次佔比</th></tr></thead>
+    <tbody id="t-off"></tbody>
+   </table>
+  </div>
+ </section>
+
+ <section>
+  <h2>每月處置件數</h2>
+  <figure>
+   <canvas id="bars" width="1840" height="400" aria-label="每月處置件數"></canvas>
+   <figcaption>2022 到 2023 的低谷對應空頭市場。2026 年的暴增則是這七年的高峰。黃色是 2026 年 8 月新制上路之後。</figcaption>
+  </figure>
+ </section>
+
+ <div class="note">
+  <h3>還沒解決的四件事</h3>
+  <ol>
+   <li><b>滑價沒驗過。</b>賣出發生在處置期間的集合競價裡,只有日線資料算不出實際成交價。這是目前最大的未知數。</li>
+   <li><b>新制樣本不足。</b>2026 年 8 月起處置從 10 個營業日縮為 5 個,主力被冷凍的時間減半,這個預期性漲勢可能會消失。目前樣本太少,無法判斷。</li>
+   <li><b>第二次處置的資金成本。</b>全額預收款券代表不能融資,資金要 100% 到位,這個成本沒有算進去。</li>
+   <li><b>籌碼面還沒看。</b>出關前那波是法人在買還是散戶追價?三大法人買賣超拿得到,分點進出要過驗證碼、取不到。</li>
+   <li><b>已排除兩類樣本。</b><b id="v-lookahead"></b> 筆的進場日落在公告日當天 —— 公告是盤後發布的,那等於用到未來資訊。另有 <b id="v-fake"></b> 筆的「出關日」其實還在另一段處置期間裡(兩次處置會重疊),是假出關。排除後結果比含入時<em>更好</em>,所以這兩個瑕疵原本是在稀釋訊號。</li>
+  </ol>
+ </div>
+
+ <footer>
+  資料來源:臺灣證券交易所與證券櫃檯買賣中心公開資訊(注意/處置公告、每日收盤行情、除權除息計算結果表)。含上市與上櫃普通股,已排除權證、ETF、特別股、可轉債。注意股數量目前只有上市。報酬皆已扣除來回 0.585% 的手續費與證交稅,並扣掉加權指數同期漲跌。出關前進出的那一組:買進日收在漲停(買不到)就順延到下一個交易日買,賣出日收在跌停(賣不掉)就順延到下一個交易日賣;順延到最後還是成交不了的 <b id="v-unfilled"></b> 筆不計入。出關後才買、處置期間買的那兩組也是同一套規則:開盤漲停就順延到下一個交易日開盤買,賣出日收在跌停就順延到下一個交易日賣。持有期間遇到除權息沒有還原,配息會讓報酬略為低估。<br>
+  這是歷史資料的整理與統計,不是投資建議。實際下單前請以券商與證交所公告為準。
+ </footer>
+</div>
+
+<script>const REPORT_DATA = {
+ "generated": "2026-10-11",
+ "path": [
+  {
+   "t": -6,
+   "excess": -0.58,
+   "n": 2258
+  },
+  {
+   "t": -5,
+   "excess": -0.55,
+   "n": 2257
+  },
+  {
+   "t": -4,
+   "excess": -0.35,
+   "n": 2256
+  },
+  {
+   "t": -3,
+   "excess": 0.04,
+   "n": 2254
+  },
+  {
+   "t": -2,
+   "excess": 1.43,
+   "n": 2253
+  },
+  {
+   "t": -1,
+   "excess": 1.91,
+   "n": 2252
+  },
+  {
+   "t": 0,
+   "excess": 1.13,
+   "n": 2252
+  },
+  {
+   "t": 1,
+   "excess": 0.23,
+   "n": 2255
+  },
+  {
+   "t": 2,
+   "excess": -0.49,
+   "n": 2255
+  },
+  {
+   "t": 3,
+   "excess": -0.95,
+   "n": 2250
+  },
+  {
+   "t": 4,
+   "excess": -1.51,
+   "n": 2249
+  },
+  {
+   "t": 5,
+   "excess": -2.03,
+   "n": 2247
+  }
+ ],
+ "coverage": {
+  "from": "2020-01-02",
+  "to": "2026-10-08",
+  "notices": 23333,
+  "noticesMarket": "twse",
+  "punishes": 3099,
+  "tradingDays": 1644,
+  "studied": 2261,
+  "codes": 2061,
+  "markets": {
+   "otc": {
+    "codes": 948,
+    "punishes": 1840,
+    "studied": 1321
+   },
+   "twse": {
+    "codes": 1127,
+    "punishes": 1259,
+    "studied": 940
+   }
+  },
+  "dropped": {
+   "lookahead": 85,
+   "fakeRelease": 432,
+   "unfilled": 5
+  }
+ },
+ "current": [
+  {
+   "code": 3016,
+   "market": "twse",
+   "histPooled": false,
+   "name": "嘉晶",
+   "measure": "第一次處置",
+   "condition": "連續三次及當日沖銷標準",
+   "start": "2026-10-01",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-02",
+   "buyLate": false,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 183.5,
+   "closeDay": "2026-10-08",
+   "entryPrice": 180.5,
+   "entryDay": "2026-10-02",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 1.08,
+   "tradeState": "持有中",
+   "w2": 1845,
+   "candidate": false
+  },
+  {
+   "code": 4174,
+   "market": "otc",
+   "histPooled": false,
+   "name": "浩鼎",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-05",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-05",
+   "buyLate": true,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 53.7,
+   "closeDay": "2026-10-08",
+   "entryPrice": 52.1,
+   "entryDay": "2026-10-07",
+   "entryDeferred": 2,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 2.49,
+   "tradeState": "持有中",
+   "w2": 17,
+   "candidate": false
+  },
+  {
+   "code": 8996,
+   "market": "twse",
+   "histPooled": false,
+   "name": "高力",
+   "measure": "第二次處置",
+   "condition": "最近十個營業日已有六次",
+   "start": "2026-10-05",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-05",
+   "buyLate": true,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 282,
+   "histMedian": 3.3,
+   "histWin": 63.1,
+   "histEV": 3.51,
+   "histWinAvg": 9.58,
+   "histLossAvg": -6.88,
+   "histWorst": -31.88,
+   "close": 1710.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 1595.0,
+   "entryDay": "2026-10-05",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 6.63,
+   "tradeState": "持有中",
+   "w2": 5470,
+   "candidate": true
+  },
+  {
+   "code": 2221,
+   "market": "otc",
+   "histPooled": false,
+   "name": "大甲",
+   "measure": "第二次處置",
+   "condition": "連續3個營業日及沖銷標準",
+   "start": "2026-10-01",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-02",
+   "buyLate": false,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 484,
+   "histMedian": 3.14,
+   "histWin": 64.5,
+   "histEV": 3.91,
+   "histWinAvg": 9.57,
+   "histLossAvg": -6.34,
+   "histWorst": -37.01,
+   "close": 192.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 188.0,
+   "entryDay": "2026-10-02",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 1.54,
+   "tradeState": "持有中",
+   "w2": 456,
+   "candidate": true
+  },
+  {
+   "code": 3167,
+   "market": "twse",
+   "histPooled": false,
+   "name": "大量",
+   "measure": "第一次處置",
+   "condition": "最近十個營業日已有六次",
+   "start": "2026-10-05",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-05",
+   "buyLate": true,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 1055.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 996.0,
+   "entryDay": "2026-10-05",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 5.34,
+   "tradeState": "持有中",
+   "w2": 4150,
+   "candidate": false
+  },
+  {
+   "code": 3055,
+   "market": "twse",
+   "histPooled": false,
+   "name": "蔚華科",
+   "measure": "第二次處置",
+   "condition": "連續五次及當日沖銷標準",
+   "start": "2026-10-01",
+   "end": "2026-10-12",
+   "daysLeft": 2,
+   "release": "2026-10-13",
+   "buyDay": "2026-10-02",
+   "buyLate": false,
+   "sellDay": "2026-10-12",
+   "status": "持有中",
+   "projected": true,
+   "histN": 282,
+   "histMedian": 3.3,
+   "histWin": 63.1,
+   "histEV": 3.51,
+   "histWinAvg": 9.58,
+   "histLossAvg": -6.88,
+   "histWorst": -31.88,
+   "close": 223.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 216.0,
+   "entryDay": "2026-10-02",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 2.66,
+   "tradeState": "持有中",
+   "w2": 406,
+   "candidate": true
+  },
+  {
+   "code": 2033,
+   "market": "twse",
+   "histPooled": false,
+   "name": "佳大",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 52.2,
+   "closeDay": "2026-10-08",
+   "entryPrice": 52.8,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": -1.72,
+   "tradeState": "持有中",
+   "w2": 53,
+   "candidate": false
+  },
+  {
+   "code": 3455,
+   "market": "otc",
+   "histPooled": false,
+   "name": "由田",
+   "measure": "第一次處置",
+   "condition": "連續5個營業日",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 284.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 277.5,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 1.76,
+   "tradeState": "持有中",
+   "w2": 485,
+   "candidate": false
+  },
+  {
+   "code": 6708,
+   "market": "otc",
+   "histPooled": false,
+   "name": "天擎",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 69.2,
+   "closeDay": "2026-10-08",
+   "entryPrice": 72.9,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": -5.66,
+   "tradeState": "持有中",
+   "w2": 1,
+   "candidate": false
+  },
+  {
+   "code": 8201,
+   "market": "twse",
+   "histPooled": false,
+   "name": "無敵",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 16.85,
+   "closeDay": "2026-10-08",
+   "entryPrice": 17.5,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": -4.3,
+   "tradeState": "持有中",
+   "w2": 1,
+   "candidate": false
+  },
+  {
+   "code": 6672,
+   "market": "twse",
+   "histPooled": false,
+   "name": "騰輝電子-KY",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 555.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 459.5,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 20.2,
+   "tradeState": "持有中",
+   "w2": 1983,
+   "candidate": false
+  },
+  {
+   "code": 6533,
+   "market": "twse",
+   "histPooled": false,
+   "name": "晶心科",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-06",
+   "end": "2026-10-13",
+   "daysLeft": 3,
+   "release": "2026-10-14",
+   "buyDay": "2026-10-06",
+   "buyLate": true,
+   "sellDay": "2026-10-13",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 352.5,
+   "closeDay": "2026-10-08",
+   "entryPrice": 345.0,
+   "entryDay": "2026-10-06",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 1.59,
+   "tradeState": "持有中",
+   "w2": 493,
+   "candidate": false
+  },
+  {
+   "code": 3518,
+   "market": "twse",
+   "histPooled": false,
+   "name": "柏騰",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-07",
+   "end": "2026-10-14",
+   "daysLeft": 4,
+   "release": "2026-10-15",
+   "buyDay": "2026-10-07",
+   "buyLate": true,
+   "sellDay": "2026-10-14",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 49.5,
+   "closeDay": "2026-10-08",
+   "entryPrice": 50.3,
+   "entryDay": "2026-10-07",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": -2.18,
+   "tradeState": "持有中",
+   "w2": 23,
+   "candidate": false
+  },
+  {
+   "code": 4556,
+   "market": "otc",
+   "histPooled": false,
+   "name": "旭然",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-07",
+   "end": "2026-10-14",
+   "daysLeft": 4,
+   "release": "2026-10-15",
+   "buyDay": "2026-10-07",
+   "buyLate": true,
+   "sellDay": "2026-10-14",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 145.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 145.0,
+   "entryDay": "2026-10-07",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": -0.58,
+   "tradeState": "持有中",
+   "w2": 112,
+   "candidate": false
+  },
+  {
+   "code": 5013,
+   "market": "otc",
+   "histPooled": false,
+   "name": "強新",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-07",
+   "end": "2026-10-14",
+   "daysLeft": 4,
+   "release": "2026-10-15",
+   "buyDay": "2026-10-07",
+   "buyLate": true,
+   "sellDay": "2026-10-14",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 53.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 53.0,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 1,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 3,
+   "candidate": false
+  },
+  {
+   "code": 3094,
+   "market": "twse",
+   "histPooled": false,
+   "name": "聯傑",
+   "measure": "第一次處置",
+   "condition": "最近十個營業日已有六次",
+   "start": "2026-10-07",
+   "end": "2026-10-14",
+   "daysLeft": 4,
+   "release": "2026-10-15",
+   "buyDay": "2026-10-07",
+   "buyLate": true,
+   "sellDay": "2026-10-14",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 69.3,
+   "closeDay": "2026-10-08",
+   "entryPrice": 67.5,
+   "entryDay": "2026-10-07",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": 2.08,
+   "tradeState": "持有中",
+   "w2": 739,
+   "candidate": false
+  },
+  {
+   "code": 1709,
+   "market": "twse",
+   "histPooled": false,
+   "name": "和益",
+   "measure": "第一次處置",
+   "condition": "最近十個營業日已有六次",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 61.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 61.0,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 1371,
+   "candidate": false
+  },
+  {
+   "code": 2466,
+   "market": "twse",
+   "histPooled": false,
+   "name": "冠西電",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 198.5,
+   "closeDay": "2026-10-08",
+   "entryPrice": null,
+   "entryDay": null,
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "漲停買不到,順延中",
+   "w2": 232,
+   "candidate": false
+  },
+  {
+   "code": 3701,
+   "market": "twse",
+   "histPooled": false,
+   "name": "大眾控",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 63.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 63.0,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 32,
+   "candidate": false
+  },
+  {
+   "code": 4174,
+   "market": "otc",
+   "histPooled": false,
+   "name": "浩鼎",
+   "measure": "第二次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 484,
+   "histMedian": 3.14,
+   "histWin": 64.5,
+   "histEV": 3.91,
+   "histWinAvg": 9.57,
+   "histLossAvg": -6.34,
+   "histWorst": -37.01,
+   "close": 53.7,
+   "closeDay": "2026-10-08",
+   "entryPrice": 53.7,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 17,
+   "candidate": false
+  },
+  {
+   "code": 4760,
+   "market": "otc",
+   "histPooled": false,
+   "name": "勤凱",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 367.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": null,
+   "entryDay": null,
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "漲停買不到,順延中",
+   "w2": 78,
+   "candidate": false
+  },
+  {
+   "code": 5205,
+   "market": "otc",
+   "histPooled": false,
+   "name": "中茂",
+   "measure": "第一次處置",
+   "condition": "連續3個營業日",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 835,
+   "histMedian": 1.12,
+   "histWin": 55.4,
+   "histEV": 1.62,
+   "histWinAvg": 8.38,
+   "histLossAvg": -6.8,
+   "histWorst": -43.48,
+   "close": 33.3,
+   "closeDay": "2026-10-08",
+   "entryPrice": null,
+   "entryDay": null,
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "漲停買不到,順延中",
+   "w2": 0,
+   "candidate": false
+  },
+  {
+   "code": 8358,
+   "market": "otc",
+   "histPooled": false,
+   "name": "金居",
+   "measure": "第二次處置",
+   "condition": "連續5個營業日",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 484,
+   "histMedian": 3.14,
+   "histWin": 64.5,
+   "histEV": 3.91,
+   "histWinAvg": 9.57,
+   "histLossAvg": -6.34,
+   "histWorst": -37.01,
+   "close": 535.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 535.0,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 11712,
+   "candidate": true
+  },
+  {
+   "code": 6957,
+   "market": "twse",
+   "histPooled": false,
+   "name": "裕慶-KY",
+   "measure": "第一次處置",
+   "condition": "連續三次",
+   "start": "2026-10-08",
+   "end": "2026-10-15",
+   "daysLeft": 5,
+   "release": "2026-10-16",
+   "buyDay": "2026-10-08",
+   "buyLate": true,
+   "sellDay": "2026-10-15",
+   "status": "持有中",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 448.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": 448.0,
+   "entryDay": "2026-10-08",
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "剛進場",
+   "w2": 146,
+   "candidate": false
+  },
+  {
+   "code": 3441,
+   "market": "otc",
+   "histPooled": false,
+   "name": "聯一光",
+   "measure": "第二次處置",
+   "condition": "連續3個營業日及沖銷標準",
+   "start": "2026-10-08",
+   "end": "2026-10-19",
+   "daysLeft": 9,
+   "release": "2026-10-20",
+   "buyDay": "2026-10-12",
+   "buyLate": false,
+   "sellDay": "2026-10-19",
+   "status": "尚未到買點",
+   "projected": true,
+   "histN": 484,
+   "histMedian": 3.14,
+   "histWin": 64.5,
+   "histEV": 3.91,
+   "histWinAvg": 9.57,
+   "histLossAvg": -6.34,
+   "histWorst": -37.01,
+   "close": 249.5,
+   "closeDay": "2026-10-08",
+   "entryPrice": null,
+   "entryDay": null,
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "尚未到買點",
+   "w2": 1564,
+   "candidate": true
+  },
+  {
+   "code": 6213,
+   "market": "twse",
+   "histPooled": false,
+   "name": "聯茂",
+   "measure": "第一次處置",
+   "condition": "連續三次及當日沖銷標準",
+   "start": "2026-10-08",
+   "end": "2026-10-19",
+   "daysLeft": 9,
+   "release": "2026-10-20",
+   "buyDay": "2026-10-12",
+   "buyLate": false,
+   "sellDay": "2026-10-19",
+   "status": "尚未到買點",
+   "projected": true,
+   "histN": 660,
+   "histMedian": 1.03,
+   "histWin": 55.0,
+   "histEV": 1.92,
+   "histWinAvg": 8.81,
+   "histLossAvg": -6.5,
+   "histWorst": -39.62,
+   "close": 806.0,
+   "closeDay": "2026-10-08",
+   "entryPrice": null,
+   "entryDay": null,
+   "entryDeferred": 0,
+   "exitPrice": null,
+   "exitDay": null,
+   "exitDeferred": 0,
+   "tradeReturn": null,
+   "tradeState": "尚未到買點",
+   "w2": 10669,
+   "candidate": false
+  }
+ ],
+ "candidate": {
+  "minW2": 200,
+  "capital": 1000000,
+  "perMonth": 3.8,
+  "rows": [
+   {
+    "label": "全部處置",
+    "n": 2261,
+    "median": 1.7,
+    "win": 58.2,
+    "low": 0.98,
+    "high": 2.47
+   },
+   {
+    "label": "第二次處置",
+    "n": 766,
+    "median": 3.19,
+    "win": 64.0,
+    "low": 1.7,
+    "high": 4.1
+   },
+   {
+    "label": "第二次 × 流動性 ≥ 2 億",
+    "n": 305,
+    "median": 4.41,
+    "win": 70.8,
+    "low": 3.27,
+    "high": 6.09
+   }
+  ],
+  "portfolio": [
+   {
+    "label": "每筆 1 張",
+    "annual": 31.7,
+    "mdd": -15.3,
+    "underwater": 588
+   },
+   {
+    "label": "每筆本金 10%",
+    "annual": 17.1,
+    "mdd": -6.0,
+    "underwater": 422
+   },
+   {
+    "label": "每筆淨值 10%",
+    "annual": 26.7,
+    "mdd": -14.4,
+    "underwater": 441
+   },
+   {
+    "label": "加權指數買進持有",
+    "annual": 23.1,
+    "mdd": -31.6,
+    "underwater": 772
+   }
+  ]
+ },
+ "headline": {
+  "樣本數": 2261,
+  "最小%": -43.48,
+  "四分之一%": -3.96,
+  "中位數%": 1.7,
+  "平均%": 2.44,
+  "四分之三%": 8.38,
+  "最大%": 48.94,
+  "標準差%": 10.38,
+  "勝率%": 58.2
+ },
+ "winloss": {
+  "全部_樣本": 2261,
+  "全部_平均%": 2.44,
+  "全部_中位數%": 1.7,
+  "賺_筆數": 1316,
+  "賠_筆數": 942,
+  "勝率%": 58.2,
+  "賺_平均%": 8.94,
+  "賺_中位數%": 7.01,
+  "賺_最大%": 48.94,
+  "賠_平均%": -6.63,
+  "賠_中位數%": -5.26,
+  "賠_最大%": -43.48,
+  "賺賠比": 1.35,
+  "期望值%": 2.43
+ },
+ "winlossSecond": {
+  "全部_樣本": 766,
+  "全部_平均%": 3.77,
+  "全部_中位數%": 3.19,
+  "賺_筆數": 490,
+  "賠_筆數": 275,
+  "勝率%": 64.0,
+  "賺_平均%": 9.57,
+  "賺_中位數%": 7.52,
+  "賺_最大%": 48.94,
+  "賠_平均%": -6.54,
+  "賠_中位數%": -4.92,
+  "賠_最大%": -37.01,
+  "賺賠比": 1.46,
+  "期望值%": 3.76
+ },
+ "years": [
+  {
+   "name": "2020 疫情崩跌與反彈",
+   "n": 349,
+   "median": 2.78,
+   "win": 63.0,
+   "p": 0.0,
+   "bear": false
+  },
+  {
+   "name": "2021 多頭",
+   "n": 353,
+   "median": 1.74,
+   "win": 57.2,
+   "p": 0.0,
+   "bear": false
+  },
+  {
+   "name": "2022 空頭",
+   "n": 162,
+   "median": 0.95,
+   "win": 55.6,
+   "p": 0.142,
+   "bear": true
+  },
+  {
+   "name": "2023 復甦",
+   "n": 227,
+   "median": 1.12,
+   "win": 55.5,
+   "p": 0.1306,
+   "bear": false
+  },
+  {
+   "name": "2024 多頭",
+   "n": 338,
+   "median": 0.77,
+   "win": 55.0,
+   "p": 0.024,
+   "bear": false
+  },
+  {
+   "name": "2025 多頭",
+   "n": 277,
+   "median": 1.66,
+   "win": 57.0,
+   "p": 0.002,
+   "bear": false
+  },
+  {
+   "name": "2026 多頭",
+   "n": 555,
+   "median": 2.72,
+   "win": 60.2,
+   "p": 0.0,
+   "bear": false
+  }
+ ],
+ "exits": [
+  {
+   "label": "出關前一日",
+   "n": 2261,
+   "median": 1.7,
+   "win": 58.2,
+   "p": 0.0
+  },
+  {
+   "label": "出關日",
+   "n": 2262,
+   "median": 0.69,
+   "win": 52.3,
+   "p": 0.0
+  },
+  {
+   "label": "出關後一日",
+   "n": 2263,
+   "median": -0.08,
+   "win": 49.7,
+   "p": 0.0182
+  }
+ ],
+ "caps": [
+  {
+   "capital": null,
+   "taken": 766,
+   "total": 766,
+   "ret": 73.3,
+   "ann": 8.5,
+   "days": 84.3,
+   "bp": 86.9,
+   "concurrent": 22
+  },
+  {
+   "capital": 5000000,
+   "taken": 745,
+   "total": 766,
+   "ret": 140.6,
+   "ann": 13.9,
+   "days": 171.2,
+   "bp": 82.1,
+   "concurrent": 18
+  },
+  {
+   "capital": 1000000,
+   "taken": 602,
+   "total": 766,
+   "ret": 323.3,
+   "ann": 23.8,
+   "days": 475.7,
+   "bp": 68.0,
+   "concurrent": 14
+  },
+  {
+   "capital": 500000,
+   "taken": 508,
+   "total": 766,
+   "ret": 466.8,
+   "ann": 29.2,
+   "days": 574.3,
+   "bp": 81.3,
+   "concurrent": 14
+  },
+  {
+   "capital": "market",
+   "taken": null,
+   "total": null,
+   "ret": 307.5,
+   "ann": 23.1,
+   "days": 2472,
+   "bp": 12.4,
+   "concurrent": null
+  }
+ ],
+ "afterRelease": {
+  "樣本數": 2764,
+  "最小%": -65.87,
+  "四分之一%": -11.83,
+  "中位數%": -3.33,
+  "平均%": -1.3,
+  "四分之三%": 6.05,
+  "最大%": 93.63,
+  "標準差%": 15.71,
+  "勝率%": 38.9
+ },
+ "rate": {
+  "總件數": 2261,
+  "涵蓋天數": 2458,
+  "每月平均": 28.0,
+  "每年平均": 336.0,
+  "最忙的月份": 114,
+  "最閒的月份": 2,
+  "有事件的月份數": 81
+ },
+ "binomial": 0.0078,
+ "monthly": [
+  {
+   "m": "2019-12",
+   "n": 7
+  },
+  {
+   "m": "2020-01",
+   "n": 7
+  },
+  {
+   "m": "2020-02",
+   "n": 15
+  },
+  {
+   "m": "2020-03",
+   "n": 83
+  },
+  {
+   "m": "2020-04",
+   "n": 33
+  },
+  {
+   "m": "2020-05",
+   "n": 51
+  },
+  {
+   "m": "2020-06",
+   "n": 54
+  },
+  {
+   "m": "2020-07",
+   "n": 69
+  },
+  {
+   "m": "2020-08",
+   "n": 38
+  },
+  {
+   "m": "2020-09",
+   "n": 35
+  },
+  {
+   "m": "2020-10",
+   "n": 16
+  },
+  {
+   "m": "2020-11",
+   "n": 30
+  },
+  {
+   "m": "2020-12",
+   "n": 33
+  },
+  {
+   "m": "2021-01",
+   "n": 30
+  },
+  {
+   "m": "2021-02",
+   "n": 37
+  },
+  {
+   "m": "2021-03",
+   "n": 53
+  },
+  {
+   "m": "2021-04",
+   "n": 65
+  },
+  {
+   "m": "2021-05",
+   "n": 27
+  },
+  {
+   "m": "2021-06",
+   "n": 49
+  },
+  {
+   "m": "2021-07",
+   "n": 43
+  },
+  {
+   "m": "2021-08",
+   "n": 19
+  },
+  {
+   "m": "2021-09",
+   "n": 12
+  },
+  {
+   "m": "2021-10",
+   "n": 18
+  },
+  {
+   "m": "2021-11",
+   "n": 33
+  },
+  {
+   "m": "2021-12",
+   "n": 35
+  },
+  {
+   "m": "2022-01",
+   "n": 7
+  },
+  {
+   "m": "2022-02",
+   "n": 14
+  },
+  {
+   "m": "2022-03",
+   "n": 15
+  },
+  {
+   "m": "2022-04",
+   "n": 21
+  },
+  {
+   "m": "2022-05",
+   "n": 18
+  },
+  {
+   "m": "2022-06",
+   "n": 15
+  },
+  {
+   "m": "2022-07",
+   "n": 13
+  },
+  {
+   "m": "2022-08",
+   "n": 25
+  },
+  {
+   "m": "2022-09",
+   "n": 11
+  },
+  {
+   "m": "2022-10",
+   "n": 11
+  },
+  {
+   "m": "2022-11",
+   "n": 12
+  },
+  {
+   "m": "2022-12",
+   "n": 10
+  },
+  {
+   "m": "2023-01",
+   "n": 1
+  },
+  {
+   "m": "2023-02",
+   "n": 17
+  },
+  {
+   "m": "2023-03",
+   "n": 25
+  },
+  {
+   "m": "2023-04",
+   "n": 27
+  },
+  {
+   "m": "2023-05",
+   "n": 28
+  },
+  {
+   "m": "2023-06",
+   "n": 24
+  },
+  {
+   "m": "2023-07",
+   "n": 47
+  },
+  {
+   "m": "2023-08",
+   "n": 12
+  },
+  {
+   "m": "2023-09",
+   "n": 9
+  },
+  {
+   "m": "2023-10",
+   "n": 14
+  },
+  {
+   "m": "2023-11",
+   "n": 24
+  },
+  {
+   "m": "2023-12",
+   "n": 26
+  },
+  {
+   "m": "2024-01",
+   "n": 21
+  },
+  {
+   "m": "2024-02",
+   "n": 42
+  },
+  {
+   "m": "2024-03",
+   "n": 37
+  },
+  {
+   "m": "2024-04",
+   "n": 34
+  },
+  {
+   "m": "2024-05",
+   "n": 41
+  },
+  {
+   "m": "2024-06",
+   "n": 40
+  },
+  {
+   "m": "2024-07",
+   "n": 49
+  },
+  {
+   "m": "2024-08",
+   "n": 31
+  },
+  {
+   "m": "2024-09",
+   "n": 31
+  },
+  {
+   "m": "2024-10",
+   "n": 21
+  },
+  {
+   "m": "2024-11",
+   "n": 21
+  },
+  {
+   "m": "2024-12",
+   "n": 23
+  },
+  {
+   "m": "2025-01",
+   "n": 12
+  },
+  {
+   "m": "2025-02",
+   "n": 23
+  },
+  {
+   "m": "2025-03",
+   "n": 17
+  },
+  {
+   "m": "2025-04",
+   "n": 17
+  },
+  {
+   "m": "2025-05",
+   "n": 26
+  },
+  {
+   "m": "2025-06",
+   "n": 12
+  },
+  {
+   "m": "2025-07",
+   "n": 23
+  },
+  {
+   "m": "2025-08",
+   "n": 52
+  },
+  {
+   "m": "2025-09",
+   "n": 27
+  },
+  {
+   "m": "2025-10",
+   "n": 36
+  },
+  {
+   "m": "2025-11",
+   "n": 22
+  },
+  {
+   "m": "2025-12",
+   "n": 45
+  },
+  {
+   "m": "2026-01",
+   "n": 56
+  },
+  {
+   "m": "2026-02",
+   "n": 41
+  },
+  {
+   "m": "2026-03",
+   "n": 124
+  },
+  {
+   "m": "2026-04",
+   "n": 127
+  },
+  {
+   "m": "2026-05",
+   "n": 125
+  },
+  {
+   "m": "2026-06",
+   "n": 117
+  },
+  {
+   "m": "2026-07",
+   "n": 70
+  },
+  {
+   "m": "2026-08",
+   "n": 55
+  },
+  {
+   "m": "2026-09",
+   "n": 51
+  },
+  {
+   "m": "2026-10",
+   "n": 25
+  }
+ ],
+ "offenders": [
+  {
+   "code": 9103,
+   "name": "美德醫療-DR",
+   "total": 52,
+   "second": 37
+  },
+  {
+   "code": 9105,
+   "name": "泰金寶-DR",
+   "total": 40,
+   "second": 25
+  },
+  {
+   "code": 3228,
+   "name": "金麗科",
+   "total": 30,
+   "second": 19
+  },
+  {
+   "code": 3081,
+   "name": "聯亞",
+   "total": 22,
+   "second": 19
+  },
+  {
+   "code": 3363,
+   "name": "上詮",
+   "total": 22,
+   "second": 15
+  },
+  {
+   "code": 8033,
+   "name": "雷虎",
+   "total": 19,
+   "second": 11
+  },
+  {
+   "code": 4991,
+   "name": "環宇-KY",
+   "total": 18,
+   "second": 15
+  },
+  {
+   "code": 8227,
+   "name": "巨有科技",
+   "total": 18,
+   "second": 13
+  },
+  {
+   "code": 4979,
+   "name": "華星光",
+   "total": 17,
+   "second": 10
+  },
+  {
+   "code": 8996,
+   "name": "高力",
+   "total": 17,
+   "second": 9
+  },
+  {
+   "code": 5314,
+   "name": "世紀",
+   "total": 16,
+   "second": 11
+  },
+  {
+   "code": 6442,
+   "name": "光聖",
+   "total": 16,
+   "second": 6
+  }
+ ],
+ "dist": [
+  -10.9,
+  5.1,
+  -5.5,
+  48.7,
+  -31.9,
+  -5.0,
+  -3.8,
+  -1.9,
+  2.7,
+  11.2,
+  6.2,
+  30.1,
+  8.7,
+  12.2,
+  7.2,
+  1.2,
+  -5.0,
+  15.2,
+  15.3,
+  21.4,
+  -3.3,
+  -9.4,
+  3.4,
+  3.7,
+  1.5,
+  -7.2,
+  -9.3,
+  15.8,
+  22.2,
+  8.2,
+  -2.2,
+  0.3,
+  -3.5,
+  3.5,
+  7.4,
+  3.9,
+  -3.4,
+  5.3,
+  9.4,
+  18.8,
+  42.9,
+  -1.9,
+  0.3,
+  13.8,
+  13.3,
+  25.3,
+  8.6,
+  1.6,
+  -3.1,
+  3.7,
+  12.9,
+  1.9,
+  17.4,
+  -2.9,
+  -4.1,
+  24.2,
+  -7.0,
+  8.6,
+  4.6,
+  3.1,
+  -0.6,
+  -9.9,
+  0.2,
+  11.7,
+  -3.9,
+  1.8,
+  -6.3,
+  -2.4,
+  3.0,
+  -15.8,
+  4.8,
+  1.0,
+  11.5,
+  -1.5,
+  19.6,
+  -10.2,
+  10.6,
+  -15.2,
+  6.2,
+  9.6,
+  12.5,
+  9.4,
+  34.6,
+  16.0,
+  19.9,
+  10.8,
+  -2.1,
+  3.5,
+  8.7,
+  -0.3,
+  20.0,
+  -9.2,
+  -1.2,
+  8.8,
+  6.9,
+  20.8,
+  12.8,
+  16.4,
+  2.5,
+  14.4,
+  5.7,
+  1.9,
+  -13.2,
+  18.8,
+  -11.7,
+  -2.6,
+  9.0,
+  11.1,
+  6.0,
+  -1.8,
+  -8.7,
+  -2.2,
+  -9.1,
+  -0.7,
+  12.0,
+  -0.9,
+  -14.4,
+  5.5,
+  -1.6,
+  7.5,
+  -3.6,
+  -2.0,
+  10.9,
+  0.5,
+  -1.9,
+  -1.6,
+  10.4,
+  1.3,
+  5.1,
+  -11.2,
+  -11.7,
+  10.0,
+  18.4,
+  -17.6,
+  6.6,
+  -19.6,
+  -2.8,
+  7.9,
+  32.8,
+  32.7,
+  2.2,
+  30.8,
+  10.7,
+  -4.4,
+  3.3,
+  -0.3,
+  10.8,
+  1.8,
+  17.6,
+  6.2,
+  16.1,
+  -0.9,
+  19.2,
+  41.7,
+  28.8,
+  1.3,
+  14.1,
+  2.5,
+  8.5,
+  14.3,
+  12.2,
+  1.1,
+  0.2,
+  -3.6,
+  -1.6,
+  -8.3,
+  -16.8,
+  26.9,
+  -0.3,
+  -7.2,
+  -14.1,
+  -1.8,
+  11.8,
+  -0.3,
+  2.9,
+  -7.8,
+  15.4,
+  -13.5,
+  2.6,
+  9.8,
+  -11.6,
+  8.0,
+  -2.2,
+  -4.6,
+  -13.2,
+  9.6,
+  15.9,
+  6.7,
+  1.0,
+  9.0,
+  4.6,
+  0.3,
+  -3.9,
+  -9.6,
+  7.7,
+  6.8,
+  -18.0,
+  -2.5,
+  -10.2,
+  -14.0,
+  -23.6,
+  -18.1,
+  6.8,
+  1.2,
+  -6.0,
+  12.7,
+  3.1,
+  -8.5,
+  0.0,
+  -9.5,
+  11.2,
+  6.2,
+  1.9,
+  34.9,
+  6.9,
+  8.5,
+  22.1,
+  22.3,
+  23.7,
+  8.0,
+  31.3,
+  16.3,
+  4.8,
+  15.1,
+  12.2,
+  6.6,
+  6.2,
+  10.9,
+  -9.6,
+  -4.2,
+  -3.5,
+  -8.6,
+  -9.3,
+  -12.0,
+  -17.4,
+  -13.9,
+  -0.2,
+  -3.2,
+  -8.9,
+  -6.9,
+  5.3,
+  10.9,
+  6.6,
+  3.9,
+  4.4,
+  17.4,
+  2.2,
+  -0.2,
+  -1.3,
+  -12.8,
+  -1.4,
+  9.3,
+  6.8,
+  -5.3,
+  3.2,
+  3.1,
+  -6.8,
+  -2.7,
+  2.9,
+  -0.9,
+  -2.1,
+  13.3,
+  20.7,
+  -3.4,
+  -6.1,
+  11.6,
+  8.6,
+  8.8,
+  -2.2,
+  4.7,
+  -1.1,
+  -2.1,
+  -5.4,
+  3.0,
+  -0.2,
+  4.3,
+  13.6,
+  -1.3,
+  -4.8,
+  3.6,
+  -1.8,
+  -2.7,
+  -2.5,
+  10.9,
+  -1.4,
+  1.0,
+  -5.6,
+  -7.0,
+  9.6,
+  -1.4,
+  4.2,
+  -6.8,
+  -7.4,
+  0.4,
+  -2.3,
+  5.2,
+  0.9,
+  1.2,
+  -6.7,
+  2.7,
+  21.1,
+  -11.3,
+  10.3,
+  -4.0,
+  -4.8,
+  -9.6,
+  -0.6,
+  6.7,
+  -1.1,
+  -6.9,
+  13.1,
+  26.7,
+  1.4,
+  8.4,
+  10.1,
+  -10.7,
+  -14.0,
+  -1.6,
+  0.7,
+  8.9,
+  -15.4,
+  9.5,
+  -4.6,
+  -3.0,
+  -8.3,
+  9.0,
+  -0.7,
+  1.2,
+  -6.7,
+  -2.8,
+  14.1,
+  1.8,
+  18.6,
+  -11.2,
+  -6.3,
+  -9.8,
+  -3.3,
+  -8.5,
+  8.1,
+  10.6,
+  1.4,
+  11.1,
+  4.0,
+  27.4,
+  1.9,
+  -4.4,
+  -6.4,
+  -10.3,
+  3.9,
+  25.8,
+  -1.3,
+  3.2,
+  -3.3,
+  8.9,
+  4.5,
+  1.6,
+  0.4,
+  -0.4,
+  0.3,
+  3.5,
+  12.4,
+  11.7,
+  1.2,
+  -15.7,
+  9.3,
+  2.0,
+  12.8,
+  -8.8,
+  7.7,
+  8.8,
+  0.6,
+  -10.0,
+  9.6,
+  5.2,
+  -1.0,
+  -7.2,
+  -7.4,
+  -0.7,
+  9.8,
+  26.3,
+  15.0,
+  -6.8,
+  2.9,
+  17.7,
+  0.2,
+  -12.2,
+  1.8,
+  -4.6,
+  -4.3,
+  15.9,
+  0.7,
+  -2.5,
+  3.5,
+  0.4,
+  3.8,
+  9.2,
+  4.4,
+  -2.6,
+  -16.2,
+  16.7,
+  -2.1,
+  19.4,
+  10.3,
+  -4.7,
+  2.0,
+  2.5,
+  19.9,
+  -13.7,
+  13.5,
+  18.2,
+  -21.2,
+  -14.9,
+  -3.6,
+  -3.6,
+  -3.5,
+  0.2,
+  -2.1,
+  -5.7,
+  -4.5,
+  12.3,
+  1.4,
+  -5.0,
+  0.2,
+  -2.8,
+  -0.8,
+  -9.7,
+  -1.5,
+  -1.2,
+  -6.1,
+  3.4,
+  0.7,
+  9.8,
+  0.7,
+  1.4,
+  9.0,
+  -6.7,
+  10.9,
+  2.7,
+  -5.6,
+  -17.2,
+  -10.1,
+  5.2,
+  -2.6,
+  -13.2,
+  12.4,
+  -7.0,
+  8.1,
+  5.9,
+  -2.5,
+  2.5,
+  -3.9,
+  0.3,
+  11.1,
+  -9.0,
+  -1.6,
+  1.5,
+  -1.1,
+  -5.4,
+  -17.0,
+  -11.2,
+  -13.6,
+  -14.3,
+  3.9,
+  2.6,
+  4.5,
+  -10.9,
+  -7.6,
+  13.7,
+  6.4,
+  -1.7,
+  14.9,
+  10.0,
+  3.0,
+  -9.1,
+  -5.0,
+  -1.7,
+  -3.2,
+  -3.0,
+  12.5,
+  10.7,
+  -7.9,
+  2.8,
+  3.0,
+  -7.3,
+  -11.5,
+  7.7,
+  -13.7,
+  -5.6,
+  7.4,
+  17.9,
+  7.6,
+  -1.4,
+  10.4,
+  11.9,
+  -1.0,
+  8.7,
+  2.2,
+  1.6,
+  0.7,
+  -0.5,
+  -6.2,
+  -6.7,
+  -5.2,
+  2.0,
+  -1.1,
+  7.1,
+  39.4,
+  -10.0,
+  8.7,
+  -11.1,
+  1.9,
+  -0.4,
+  6.4,
+  0.1,
+  -2.8,
+  -3.6,
+  -4.1,
+  -1.6,
+  -4.3,
+  -2.9,
+  -5.7,
+  -7.1,
+  8.7,
+  0.4,
+  0.7,
+  8.4,
+  13.7,
+  -12.2,
+  3.6,
+  -9.8,
+  5.3,
+  19.8,
+  0.5,
+  3.2,
+  -0.8,
+  -4.8,
+  0.8,
+  2.3,
+  4.9,
+  -1.8,
+  -4.8,
+  3.3,
+  12.5,
+  -1.5,
+  -0.4,
+  0.0,
+  -0.0,
+  3.6,
+  -3.2,
+  11.0,
+  -6.4,
+  0.8,
+  1.6,
+  12.0,
+  22.8,
+  3.2,
+  12.3,
+  -6.8,
+  -7.2,
+  -1.1,
+  5.3,
+  5.6,
+  7.5,
+  2.8,
+  5.1,
+  -7.7,
+  1.2,
+  10.0,
+  12.4,
+  -3.3,
+  1.5,
+  0.0,
+  10.3,
+  3.4,
+  -2.3,
+  5.8,
+  5.1,
+  -7.7,
+  5.3,
+  -2.1,
+  -10.7,
+  -20.6,
+  -17.7,
+  4.7,
+  2.2,
+  4.3,
+  5.3,
+  -1.5,
+  4.7,
+  4.7,
+  8.5,
+  -0.7,
+  -1.0,
+  -3.7,
+  -10.4,
+  0.8,
+  -7.8,
+  -8.0,
+  -2.9,
+  38.2,
+  -8.1,
+  1.6,
+  0.6,
+  8.8,
+  3.8,
+  2.4,
+  10.5,
+  -6.9,
+  -6.6,
+  6.0,
+  22.6,
+  -6.8,
+  8.8,
+  -1.1,
+  9.9,
+  -2.6,
+  -9.1,
+  5.6,
+  3.3,
+  -5.1,
+  3.3,
+  13.8,
+  -1.3,
+  -5.2,
+  11.5,
+  14.6,
+  1.0,
+  14.7,
+  5.1,
+  6.4,
+  5.6,
+  8.1,
+  -20.3,
+  -2.8,
+  -10.3,
+  8.1,
+  7.7,
+  -0.5,
+  4.3,
+  -3.6,
+  7.2,
+  4.1,
+  5.3,
+  1.7,
+  19.0,
+  7.5,
+  4.2,
+  4.2,
+  -2.9,
+  0.8,
+  -9.6,
+  18.8,
+  3.0,
+  -13.0,
+  3.3,
+  4.3,
+  2.4,
+  -5.2,
+  -6.0,
+  -1.0,
+  15.5,
+  13.0,
+  5.5,
+  29.5,
+  8.9,
+  0.6,
+  7.8,
+  -0.9,
+  1.2,
+  0.0,
+  -6.6,
+  20.8,
+  8.0,
+  -5.0,
+  12.6,
+  1.4,
+  10.2,
+  15.8,
+  -4.9,
+  8.6,
+  -6.3,
+  20.4,
+  5.9,
+  1.1,
+  -10.5,
+  1.8,
+  -5.0,
+  -4.9,
+  0.1,
+  3.8,
+  -5.3,
+  3.6,
+  -14.8,
+  -8.2,
+  -10.2,
+  7.7,
+  1.8,
+  -1.7,
+  10.1,
+  14.7,
+  -22.3,
+  9.0,
+  -21.0,
+  -7.7,
+  -9.1,
+  0.4,
+  5.3,
+  6.8,
+  9.4,
+  -4.7,
+  11.3,
+  9.7,
+  12.5,
+  36.7,
+  4.1,
+  15.4,
+  11.0,
+  10.0,
+  31.0,
+  8.6,
+  7.7,
+  2.9,
+  -9.4,
+  3.6,
+  1.9,
+  20.0,
+  10.5,
+  29.7,
+  -2.4,
+  25.9,
+  10.7,
+  7.4,
+  13.9,
+  6.5,
+  3.6,
+  -2.8,
+  -0.5,
+  -1.0,
+  -12.5,
+  1.5,
+  2.7,
+  -9.0,
+  6.2,
+  -0.4,
+  -1.9,
+  -9.3,
+  1.4,
+  10.4,
+  -2.0,
+  10.3,
+  9.7,
+  1.2,
+  1.4,
+  -5.8,
+  0.9,
+  -5.9,
+  -0.3,
+  5.1,
+  -10.4,
+  16.0,
+  -16.7,
+  -24.8,
+  -4.4,
+  -8.4,
+  7.0,
+  -19.8,
+  -13.9,
+  -9.0,
+  15.4,
+  -7.3,
+  -5.1,
+  -2.3,
+  7.2,
+  5.2,
+  -0.6,
+  -14.7,
+  -16.5,
+  12.6,
+  15.7,
+  19.0,
+  12.8,
+  7.8,
+  14.7,
+  39.2,
+  7.5,
+  7.2,
+  -3.9,
+  3.4,
+  -5.3,
+  8.5,
+  3.5,
+  8.1,
+  6.2,
+  0.4,
+  -4.5,
+  -5.7,
+  10.3,
+  -5.7,
+  -39.6,
+  -7.8,
+  11.0,
+  -0.2,
+  -2.3,
+  -3.0,
+  7.3,
+  -2.8,
+  -0.5,
+  6.7,
+  5.7,
+  -6.8,
+  18.0,
+  -4.9,
+  3.9,
+  7.4,
+  13.7,
+  -4.9,
+  -4.7,
+  8.9,
+  4.1,
+  12.5,
+  19.8,
+  4.2,
+  26.1,
+  9.8,
+  0.6,
+  -4.9,
+  -4.4,
+  16.8,
+  -0.2,
+  -8.3,
+  14.9,
+  -1.2,
+  -1.5,
+  9.0,
+  13.5,
+  -13.5,
+  0.9,
+  2.6,
+  0.3,
+  5.8,
+  -0.2,
+  -4.3,
+  -15.3,
+  5.5,
+  -2.5,
+  -3.3,
+  -1.8,
+  16.7,
+  7.0,
+  -1.0,
+  -2.6,
+  12.0,
+  3.6,
+  14.9,
+  15.3,
+  -0.5,
+  3.6,
+  3.1,
+  11.4,
+  3.1,
+  3.5,
+  26.3,
+  8.8,
+  -5.9,
+  28.6,
+  20.0,
+  15.3,
+  -0.2,
+  -2.4,
+  31.9,
+  17.2,
+  -8.1,
+  3.7,
+  7.3,
+  -17.1,
+  -12.3,
+  4.4,
+  2.7,
+  3.5,
+  -1.4,
+  10.8,
+  15.0,
+  17.1,
+  -2.7,
+  3.6,
+  25.4,
+  20.0,
+  -0.3,
+  21.6,
+  -5.6,
+  -8.4,
+  -2.9,
+  -19.2,
+  -0.5,
+  -5.5,
+  8.4,
+  -13.0,
+  2.2,
+  0.7,
+  5.4,
+  2.9,
+  2.4,
+  1.0,
+  -6.4,
+  -22.1,
+  -0.4,
+  8.0,
+  -6.4,
+  -4.3,
+  -23.0,
+  -2.5,
+  -4.1,
+  2.7,
+  -16.2,
+  -22.8,
+  12.8,
+  -3.5,
+  12.9,
+  -6.9,
+  -16.4,
+  -3.1,
+  -11.3,
+  -22.0,
+  -23.1,
+  -12.0,
+  -2.9,
+  -0.1,
+  4.7,
+  -1.4,
+  -8.8,
+  3.0,
+  4.3,
+  -7.0,
+  7.3,
+  -11.5,
+  3.8,
+  15.8,
+  6.8,
+  -1.5,
+  5.3,
+  -7.6,
+  2.9,
+  19.0,
+  7.9,
+  -0.8,
+  4.2,
+  12.2,
+  7.2,
+  4.5,
+  -1.6,
+  15.5,
+  6.2,
+  -3.7,
+  -3.6,
+  -3.4,
+  -11.2,
+  12.1,
+  -3.9,
+  -0.0,
+  3.1,
+  -23.6,
+  -20.5,
+  -19.0,
+  -16.7,
+  -27.8,
+  -37.0,
+  -3.6,
+  -14.3,
+  -15.1,
+  -1.4,
+  -1.1,
+  -12.0,
+  -30.5,
+  8.7,
+  2.9,
+  -5.9,
+  0.1,
+  2.1,
+  1.9,
+  5.4,
+  14.2,
+  -1.6,
+  25.8,
+  -3.0,
+  2.2,
+  1.8,
+  1.2,
+  4.6,
+  0.8,
+  8.1,
+  -13.1,
+  28.5,
+  5.5,
+  5.2,
+  -8.0,
+  3.5,
+  -0.8,
+  1.6,
+  1.4,
+  9.3,
+  -2.2,
+  -3.7,
+  7.8,
+  -9.5,
+  -5.1,
+  11.8,
+  3.1,
+  -9.6,
+  5.7,
+  -4.9,
+  -20.3,
+  -6.1,
+  7.6,
+  21.4,
+  8.9,
+  2.7,
+  -7.6,
+  -1.6,
+  5.9,
+  2.2,
+  26.3,
+  17.2,
+  6.9,
+  -10.1,
+  8.0,
+  24.1,
+  -6.0,
+  4.6,
+  3.2,
+  5.7,
+  4.4,
+  -5.8,
+  -5.3,
+  -14.1,
+  -8.4,
+  -2.4,
+  12.0,
+  16.8,
+  -3.2,
+  4.8,
+  -11.8,
+  -13.9,
+  1.4,
+  17.6,
+  -4.0,
+  -5.6,
+  1.0,
+  -6.1,
+  -5.0,
+  5.0,
+  -5.8,
+  21.1,
+  -3.4,
+  32.3,
+  5.6,
+  12.4,
+  12.2,
+  23.6,
+  8.2,
+  8.9,
+  0.1,
+  3.4,
+  9.0,
+  -5.3,
+  10.7,
+  8.0,
+  -13.9,
+  1.1,
+  13.7,
+  -0.8,
+  1.6,
+  1.7,
+  4.5,
+  17.5,
+  7.6,
+  3.8,
+  -14.5,
+  -2.4,
+  -2.1,
+  -5.4,
+  -10.0,
+  -3.4,
+  5.9,
+  6.8,
+  2.8,
+  7.7,
+  8.6,
+  5.4,
+  5.7,
+  -5.8,
+  1.1,
+  1.3,
+  -0.8,
+  22.0,
+  11.5,
+  48.9,
+  28.0,
+  15.8,
+  15.6,
+  -3.7,
+  2.1,
+  7.2,
+  4.2,
+  14.4,
+  2.3,
+  0.7,
+  2.5,
+  -8.0,
+  6.8,
+  -1.4,
+  -13.5,
+  -11.6,
+  -18.7,
+  0.6,
+  3.6,
+  -17.9,
+  -16.1,
+  -8.8,
+  0.0,
+  9.5,
+  9.2,
+  10.9,
+  -10.2,
+  19.5,
+  12.2,
+  16.1,
+  17.7,
+  2.7,
+  7.3,
+  11.6,
+  24.6,
+  20.0,
+  28.2,
+  -5.2,
+  -4.0,
+  -6.4,
+  4.6,
+  -1.3,
+  -1.1,
+  -8.3,
+  12.8,
+  -5.4,
+  7.8,
+  6.2,
+  -6.1,
+  11.7,
+  -10.4,
+  5.7,
+  9.4,
+  -8.8,
+  -5.1,
+  -18.3,
+  0.9,
+  18.9,
+  4.4,
+  17.6,
+  -8.7,
+  9.0,
+  0.3,
+  8.7,
+  -5.5,
+  6.3,
+  18.5,
+  15.9,
+  16.6,
+  4.1,
+  8.6,
+  2.6,
+  0.2,
+  3.3,
+  26.2,
+  6.9,
+  17.7,
+  8.4,
+  10.7,
+  9.2,
+  20.6,
+  2.3,
+  34.2,
+  15.6,
+  25.2,
+  22.8,
+  5.4,
+  2.1,
+  1.5,
+  7.5,
+  -2.3,
+  -0.4,
+  -6.9,
+  10.5,
+  -3.0,
+  3.7,
+  18.2,
+  -1.4,
+  3.9,
+  21.0,
+  7.7,
+  4.6,
+  2.6,
+  -8.6,
+  -13.9,
+  -0.1,
+  -8.2,
+  25.6,
+  16.1,
+  -7.7,
+  -11.5,
+  14.8,
+  -10.0,
+  -19.6,
+  12.7,
+  3.8,
+  6.3,
+  2.3,
+  9.7,
+  9.3,
+  13.8,
+  -2.0,
+  34.6,
+  5.2,
+  6.5,
+  5.9,
+  32.4,
+  10.1,
+  3.8,
+  -12.6,
+  -8.2,
+  -6.1,
+  -2.6,
+  -5.7,
+  -2.0,
+  -6.1,
+  7.0,
+  3.6,
+  5.3,
+  11.3,
+  8.5,
+  -8.4,
+  8.0,
+  -0.8,
+  5.6,
+  4.9,
+  6.1,
+  5.2,
+  -2.3,
+  -1.3,
+  10.6,
+  31.4,
+  10.8,
+  9.1,
+  6.5,
+  11.6,
+  -3.1,
+  9.4,
+  10.6,
+  15.6,
+  -2.2,
+  -4.5,
+  4.7,
+  5.9,
+  1.8,
+  4.0,
+  -5.6,
+  -3.2,
+  -1.0,
+  16.8,
+  -3.7,
+  5.5,
+  4.6,
+  7.0,
+  -10.6,
+  -1.9,
+  -5.6,
+  -3.5,
+  -4.2,
+  -11.5,
+  -1.2,
+  10.8,
+  -6.6,
+  1.3,
+  4.5,
+  12.6,
+  -9.1,
+  -3.0,
+  -10.6,
+  3.9,
+  1.6,
+  7.0,
+  2.4,
+  3.6,
+  -3.1,
+  -1.9,
+  -7.0,
+  2.5,
+  15.6,
+  16.8,
+  4.7,
+  -6.5,
+  -9.7,
+  -3.1,
+  -5.4,
+  -17.2,
+  1.4,
+  -9.8,
+  9.4,
+  -2.6,
+  7.6,
+  0.7,
+  0.6,
+  -8.2,
+  6.5,
+  6.3,
+  2.6,
+  13.3,
+  1.9,
+  4.8,
+  4.8,
+  -1.4,
+  10.8,
+  -4.8,
+  2.7,
+  7.4,
+  20.5,
+  -2.6,
+  2.5,
+  1.9,
+  6.1,
+  15.7,
+  12.1,
+  0.5,
+  0.4,
+  21.3,
+  -1.3,
+  6.4,
+  -0.0,
+  8.7,
+  -5.5,
+  0.4,
+  4.2,
+  -4.7,
+  7.5,
+  -0.9,
+  12.4,
+  5.0,
+  5.5,
+  4.8,
+  7.1,
+  15.6,
+  10.6,
+  5.8,
+  -6.2,
+  5.3,
+  -6.8,
+  1.9,
+  -10.8,
+  3.6,
+  -1.6,
+  -3.5,
+  -3.2,
+  -3.1,
+  -1.2,
+  7.1,
+  8.6,
+  3.4,
+  -1.7,
+  -19.5,
+  -17.2,
+  -7.8,
+  -1.3,
+  -8.3,
+  -14.7,
+  8.8,
+  11.7,
+  2.8,
+  11.8,
+  -3.3,
+  12.8,
+  -4.8,
+  1.6,
+  17.6,
+  -16.1,
+  -9.2,
+  -9.0,
+  -15.1,
+  -12.7,
+  -1.7,
+  -8.0,
+  14.2,
+  13.1,
+  4.8,
+  -0.9,
+  1.2,
+  -0.3,
+  -7.0,
+  -6.3,
+  -5.4,
+  -1.1,
+  -6.5,
+  -12.1,
+  -9.8,
+  5.4,
+  -6.8,
+  3.1,
+  1.1,
+  -5.1,
+  -2.2,
+  4.2,
+  -6.7,
+  11.0,
+  16.1,
+  16.0,
+  -4.6,
+  -1.8,
+  8.2,
+  1.6,
+  0.8,
+  1.9,
+  7.7,
+  1.5,
+  -0.8,
+  3.6,
+  -18.8,
+  3.8,
+  -0.6,
+  38.5,
+  12.8,
+  3.8,
+  -7.0,
+  9.0,
+  -1.6,
+  9.6,
+  -9.6,
+  -10.6,
+  -6.7,
+  -5.4,
+  -0.1,
+  -1.9,
+  -4.0,
+  -10.9,
+  5.8,
+  3.6,
+  0.4,
+  0.9,
+  1.3,
+  -3.4,
+  -2.8,
+  0.7,
+  4.0,
+  0.8,
+  3.8,
+  2.6,
+  5.9,
+  -6.9,
+  4.2,
+  1.2,
+  3.4,
+  -2.6,
+  -3.3,
+  4.8,
+  10.0,
+  3.6,
+  -1.0,
+  4.9,
+  -20.8,
+  -2.3,
+  12.3,
+  -0.4,
+  -10.4,
+  -4.4,
+  11.8,
+  3.8,
+  10.5,
+  6.1,
+  4.8,
+  -3.5,
+  7.8,
+  -7.9,
+  20.8,
+  27.4,
+  2.3,
+  -3.9,
+  3.7,
+  -7.9,
+  -2.8,
+  -8.6,
+  -1.2,
+  2.8,
+  -0.4,
+  1.4,
+  7.2,
+  -1.0,
+  2.4,
+  -5.2,
+  3.6,
+  20.8,
+  5.8,
+  -9.3,
+  0.1,
+  -5.3,
+  -6.1,
+  0.2,
+  -4.2,
+  21.4,
+  -25.4,
+  2.6,
+  17.2,
+  10.8,
+  1.1,
+  -6.7,
+  -4.4,
+  -13.1,
+  10.7,
+  9.5,
+  3.1,
+  -15.3,
+  -3.4,
+  19.2,
+  -6.2,
+  10.4,
+  0.4,
+  5.0,
+  -1.7,
+  6.6,
+  8.1,
+  0.2,
+  -14.5,
+  3.3,
+  0.2,
+  -5.7,
+  -8.3,
+  -1.6,
+  7.6,
+  14.1,
+  9.1,
+  -1.2,
+  0.7,
+  0.2,
+  1.1,
+  4.0,
+  -8.6,
+  -6.4,
+  -1.4,
+  -1.3,
+  -11.8,
+  -2.0,
+  4.3,
+  3.2,
+  -1.0,
+  3.5,
+  8.4,
+  8.6,
+  2.2,
+  10.3,
+  6.1,
+  -0.2,
+  -7.7,
+  4.8,
+  -4.2,
+  -6.5,
+  -3.3,
+  -2.9,
+  -0.2,
+  1.4,
+  3.0,
+  -1.5,
+  2.9,
+  -12.9,
+  -8.5,
+  8.6,
+  -2.3,
+  11.0,
+  -1.6,
+  14.0,
+  20.5,
+  6.6,
+  -6.6,
+  -0.3,
+  10.2,
+  -4.7,
+  -18.0,
+  -14.7,
+  -36.7,
+  1.0,
+  -9.3,
+  -8.1,
+  -12.0,
+  -14.6,
+  -1.4,
+  3.8,
+  -10.6,
+  -4.5,
+  17.4,
+  -10.8,
+  1.7,
+  12.0,
+  12.5,
+  10.3,
+  -4.1,
+  -11.0,
+  16.5,
+  5.3,
+  -4.8,
+  2.2,
+  9.6,
+  -0.8,
+  4.4,
+  15.9,
+  23.9,
+  18.7,
+  22.1,
+  11.1,
+  5.7,
+  -5.0,
+  14.5,
+  3.1,
+  -0.0,
+  8.2,
+  -6.2,
+  3.8,
+  0.8,
+  0.5,
+  4.8,
+  -8.5,
+  -8.3,
+  -12.0,
+  7.0,
+  -22.8,
+  16.6,
+  -0.7,
+  1.1,
+  -6.9,
+  14.9,
+  -16.7,
+  4.1,
+  2.6,
+  -3.8,
+  4.5,
+  -7.9,
+  4.2,
+  6.8,
+  -4.9,
+  -11.0,
+  5.5,
+  4.0,
+  11.2,
+  15.8,
+  -2.8,
+  -3.4,
+  8.2,
+  2.9,
+  1.8,
+  3.4,
+  3.4,
+  -12.2,
+  -10.4,
+  -0.4,
+  -5.3,
+  -4.8,
+  5.5,
+  2.4,
+  12.3,
+  29.5,
+  -5.2,
+  1.6,
+  11.8,
+  3.1,
+  1.7,
+  13.5,
+  -6.0,
+  8.3,
+  2.3,
+  0.6,
+  4.8,
+  -15.9,
+  -7.4,
+  -8.0,
+  -10.6,
+  -3.7,
+  13.0,
+  -5.0,
+  -10.8,
+  6.1,
+  -5.8,
+  15.0,
+  -0.4,
+  12.8,
+  -1.1,
+  21.5,
+  7.6,
+  14.4,
+  -10.2,
+  -12.1,
+  -1.3,
+  -0.4,
+  6.0,
+  -6.8,
+  -3.9,
+  -6.8,
+  5.7,
+  9.2,
+  5.0,
+  11.5,
+  5.1,
+  6.0,
+  6.8,
+  -16.1,
+  9.5,
+  14.8,
+  25.7,
+  15.8,
+  2.7,
+  -1.9,
+  11.1,
+  2.1,
+  -4.4,
+  6.9,
+  -2.3,
+  8.9,
+  -4.9,
+  3.7,
+  -13.4,
+  -20.4,
+  -3.2,
+  -5.0,
+  -4.0,
+  0.4,
+  -6.1,
+  3.2,
+  4.1,
+  -2.2,
+  -5.7,
+  -4.0,
+  18.3,
+  1.4,
+  14.2,
+  6.4,
+  4.4,
+  6.7,
+  -4.0,
+  -6.3,
+  -7.5,
+  21.4,
+  -1.5,
+  2.2,
+  12.7,
+  6.4,
+  -10.9,
+  -15.2,
+  -11.6,
+  -3.4,
+  2.7,
+  3.9,
+  5.9,
+  -3.5,
+  2.4,
+  -14.8,
+  -2.6,
+  -4.4,
+  -9.7,
+  10.8,
+  3.8,
+  4.9,
+  -5.8,
+  0.4,
+  -17.5,
+  -1.0,
+  -2.1,
+  -4.9,
+  -1.8,
+  2.0,
+  1.4,
+  -4.3,
+  4.2,
+  -3.4,
+  2.1,
+  8.8,
+  -6.1,
+  9.2,
+  -6.4,
+  -2.1,
+  -8.1,
+  10.2,
+  -2.6,
+  -5.0,
+  -9.2,
+  2.0,
+  2.5,
+  1.3,
+  4.8,
+  3.4,
+  21.7,
+  10.1,
+  -1.0,
+  14.1,
+  6.3,
+  -24.6,
+  7.2,
+  13.8,
+  2.8,
+  -14.4,
+  3.0,
+  6.2,
+  -7.1,
+  10.4,
+  15.7,
+  6.1,
+  24.7,
+  12.5,
+  1.7,
+  15.1,
+  13.0,
+  8.2,
+  15.2,
+  -8.5,
+  3.3,
+  -1.1,
+  0.7,
+  4.4,
+  0.4,
+  4.4,
+  1.0,
+  -4.5,
+  11.3,
+  2.5,
+  6.5,
+  13.0,
+  0.9,
+  -10.1,
+  -9.8,
+  3.2,
+  -1.4,
+  -6.2,
+  -10.3,
+  14.9,
+  -8.7,
+  -5.7,
+  -7.3,
+  -9.3,
+  1.1,
+  -0.4,
+  6.2,
+  -4.9,
+  0.8,
+  26.8,
+  0.1,
+  7.8,
+  4.0,
+  -7.0,
+  3.2,
+  -0.3,
+  -0.8,
+  6.5,
+  -1.2,
+  -0.9,
+  -3.8,
+  -7.0,
+  -0.8,
+  14.7,
+  -0.5,
+  -16.9,
+  -14.6,
+  -0.5,
+  7.3,
+  -4.5,
+  0.2,
+  8.4,
+  -12.6,
+  -9.9,
+  2.5,
+  -13.6,
+  -0.1,
+  21.6,
+  1.6,
+  22.0,
+  14.0,
+  17.2,
+  -9.6,
+  3.8,
+  14.4,
+  5.2,
+  -7.4,
+  -1.3,
+  -4.7,
+  2.0,
+  -12.3,
+  -1.1,
+  12.9,
+  -2.1,
+  -13.3,
+  21.9,
+  20.3,
+  -3.6,
+  -9.6,
+  -4.1,
+  9.0,
+  12.7,
+  -3.1,
+  -16.8,
+  5.5,
+  -2.9,
+  -23.7,
+  -13.2,
+  -6.6,
+  -8.1,
+  -0.4,
+  9.2,
+  -3.2,
+  -8.2,
+  -3.0,
+  -9.2,
+  -3.4,
+  -6.7,
+  7.3,
+  -5.3,
+  2.2,
+  -2.2,
+  4.9,
+  -0.4,
+  13.3,
+  11.4,
+  19.0,
+  -3.8,
+  1.4,
+  -4.0,
+  0.9,
+  3.7,
+  23.0,
+  14.5,
+  13.1,
+  25.8,
+  -3.4,
+  2.2,
+  -7.2,
+  29.9,
+  0.3,
+  -4.9,
+  8.2,
+  5.6,
+  1.0,
+  42.6,
+  39.7,
+  -1.0,
+  3.0,
+  -7.0,
+  7.1,
+  -1.9,
+  14.8,
+  8.4,
+  11.2,
+  -11.4,
+  8.5,
+  -4.6,
+  -43.5,
+  6.5,
+  -12.2,
+  2.7,
+  -7.5,
+  2.8,
+  -3.0,
+  1.8,
+  0.1,
+  9.7,
+  1.4,
+  -3.1,
+  6.4,
+  -7.8,
+  7.9,
+  -13.0,
+  -3.3,
+  -1.3,
+  3.2,
+  1.8,
+  -3.6,
+  -12.5,
+  -26.0,
+  -6.2,
+  -8.4,
+  -17.1,
+  14.9,
+  -11.8,
+  16.6,
+  22.8,
+  21.9,
+  12.8,
+  16.2,
+  0.5,
+  19.8,
+  38.8,
+  17.2,
+  8.4,
+  1.4,
+  16.1,
+  26.6,
+  22.1,
+  2.0,
+  0.4,
+  2.1,
+  -8.5,
+  11.3,
+  1.4,
+  23.9,
+  4.3,
+  29.6,
+  29.4,
+  4.5,
+  -1.1,
+  -4.6,
+  6.9,
+  11.4,
+  0.8,
+  6.3,
+  7.3,
+  12.8,
+  -1.2,
+  8.2,
+  15.2,
+  -4.5,
+  1.9,
+  2.4,
+  -13.0,
+  -0.7,
+  0.9,
+  1.0,
+  26.8,
+  15.0,
+  -4.7,
+  -3.0,
+  0.8,
+  10.6,
+  20.1,
+  12.1,
+  8.9,
+  6.1,
+  -9.8,
+  -0.6,
+  -1.1,
+  9.8,
+  -8.2,
+  1.7,
+  15.0,
+  -8.0,
+  -4.2,
+  -13.4,
+  1.7,
+  7.6,
+  6.3,
+  2.1,
+  -1.4,
+  -3.5,
+  25.0,
+  3.7,
+  21.5,
+  9.4,
+  -5.3,
+  1.0,
+  -4.0,
+  31.2,
+  -1.4,
+  -6.1,
+  1.8,
+  -19.3,
+  1.8,
+  -3.4,
+  0.1,
+  10.1,
+  -5.4,
+  1.2,
+  3.9,
+  -2.0,
+  -0.9,
+  -14.7,
+  -13.7,
+  0.3,
+  -9.6,
+  -7.7,
+  8.6,
+  4.1,
+  8.1,
+  13.2,
+  22.6,
+  -9.8,
+  -2.3,
+  -6.9,
+  -7.5,
+  0.0,
+  -5.9,
+  3.1,
+  7.9,
+  8.4,
+  17.1,
+  22.8,
+  -3.3,
+  6.2,
+  17.9,
+  -9.2,
+  -6.2,
+  3.0,
+  -1.6,
+  -6.4,
+  -3.1,
+  3.7,
+  -2.0,
+  3.5,
+  13.9,
+  44.9,
+  37.0,
+  25.8,
+  22.5,
+  14.2,
+  15.8,
+  -1.3,
+  -10.2,
+  -6.9,
+  -2.8,
+  12.6,
+  10.6,
+  2.1,
+  3.2,
+  -3.0,
+  8.7,
+  6.6,
+  17.7,
+  -3.5,
+  -2.0,
+  -2.7,
+  6.6,
+  6.9,
+  4.5,
+  -11.6,
+  1.1,
+  -4.1,
+  -2.1,
+  -10.4,
+  -1.4,
+  -2.6,
+  9.5,
+  11.8,
+  1.6,
+  11.9,
+  19.3,
+  15.4,
+  1.0,
+  24.4,
+  -0.6,
+  -2.1,
+  -9.1,
+  1.0,
+  7.7,
+  10.9,
+  19.2,
+  1.6,
+  6.8,
+  6.3,
+  -7.4,
+  -0.9,
+  12.6,
+  3.3,
+  12.7,
+  -8.9,
+  0.5,
+  -8.3,
+  -0.7,
+  8.9,
+  0.8,
+  2.8,
+  -3.7,
+  -2.4,
+  21.7,
+  11.4,
+  -15.4,
+  22.4,
+  5.1,
+  8.3,
+  10.8,
+  -3.8,
+  -2.1,
+  -0.2,
+  26.8,
+  28.8,
+  4.7,
+  15.6,
+  4.9,
+  11.4,
+  12.7,
+  16.5,
+  7.8,
+  -0.2,
+  -0.1,
+  4.3,
+  16.2,
+  -11.8,
+  0.7,
+  3.1,
+  9.4,
+  14.9,
+  11.3,
+  -0.5,
+  21.7,
+  1.4,
+  19.2,
+  6.4,
+  -4.3,
+  0.5,
+  1.1,
+  3.4,
+  -6.2,
+  -0.8,
+  4.1,
+  -0.1,
+  4.6,
+  7.1,
+  5.4,
+  -13.2,
+  6.5,
+  13.6,
+  -9.6,
+  -0.0,
+  16.2,
+  9.4,
+  7.5,
+  10.5,
+  9.1,
+  6.0,
+  17.4,
+  12.6,
+  8.2,
+  22.9,
+  2.7,
+  -6.7,
+  12.1,
+  2.0,
+  -0.4,
+  9.5,
+  0.9,
+  7.9,
+  0.5,
+  9.9,
+  -0.4,
+  -7.2,
+  15.8,
+  6.4,
+  20.6,
+  2.3,
+  -4.8,
+  -8.7,
+  0.0,
+  -8.4,
+  13.6,
+  -6.4,
+  10.0,
+  -8.0,
+  2.6,
+  -6.7,
+  0.9,
+  -3.2,
+  -3.1,
+  9.6,
+  0.6,
+  -13.6,
+  7.7,
+  1.5
+ ]
+};
+"use strict";
+(() => {
+  // web/src/charts.ts
+  function token(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  function context(id, ratio, minHeight) {
+    const canvas = document.querySelector(`#${id}`);
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return null;
+    const w = canvas.clientWidth || 920;
+    const h = Math.max(minHeight, Math.round(w * ratio));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.height = `${h}px`;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return [ctx, { w, h }];
+  }
+  function drawPath(points) {
+    const found = context("path", 620 / 1840, 240);
+    if (!found) return;
+    const [ctx, canvas] = found;
+    const pad = { l: 40, r: 15, t: 40, b: 30 };
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    const lo = Math.min(...ys) - 0.8;
+    const hi = Math.max(...ys) + 0.8;
+    const xAt = (v) => pad.l + (v - Math.min(...xs)) / (Math.max(...xs) - Math.min(...xs)) * (canvas.w - pad.l - pad.r);
+    const yAt = (v) => canvas.h - pad.b - (v - lo) / (hi - lo) * (canvas.h - pad.t - pad.b);
+    const peak = points.reduce((a, b) => b[1] > a[1] ? b : a);
+    ctx.strokeStyle = token("--hair");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, yAt(0));
+    ctx.lineTo(canvas.w - pad.r, yAt(0));
+    ctx.stroke();
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = token("--muted");
+    ctx.beginPath();
+    ctx.moveTo(xAt(0), pad.t);
+    ctx.lineTo(xAt(0), canvas.h - pad.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = token("--brass");
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    points.forEach(([x, y], i) => {
+      if (i === 0) ctx.moveTo(xAt(x), yAt(y));
+      else ctx.lineTo(xAt(x), yAt(y));
+    });
+    ctx.stroke();
+    for (const [x, y] of points) {
+      const isPeak = x === peak[0];
+      ctx.fillStyle = isPeak ? token("--up") : token("--brass");
+      ctx.beginPath();
+      ctx.arc(xAt(x), yAt(y), isPeak ? 5.5 : 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = token("--up");
+    ctx.font = "700 13px 'IBM Plex Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`+${peak[1].toFixed(2)}%`, xAt(peak[0]), yAt(peak[1]) - 12);
+    ctx.fillStyle = token("--muted");
+    ctx.font = "600 12px 'Noto Sans TC', sans-serif";
+    ctx.fillText("\u51FA\u95DC\u524D\u4E00\u65E5\u898B\u9802", xAt(peak[0]), yAt(peak[1]) - 27);
+    ctx.fillText("\u51FA\u95DC\u65E5", xAt(0), canvas.h - pad.b + 18);
+    ctx.font = "400 11px 'IBM Plex Mono', monospace";
+    for (const v of [-6, -4, -2, 2, 4]) {
+      ctx.fillText(`${v > 0 ? "+" : ""}${v}`, xAt(v), canvas.h - pad.b + 18);
+    }
+    ctx.textAlign = "right";
+    for (let v = Math.ceil(lo); v <= Math.floor(hi); v++) {
+      ctx.fillText(`${v}%`, pad.l - 7, yAt(v) + 4);
+    }
+  }
+  function drawMonthly(rows, newRulesFrom) {
+    const found = context("bars", 400 / 1840, 160);
+    if (!found || rows.length === 0) return;
+    const [ctx, canvas] = found;
+    const pad = { l: 30, r: 10, t: 10, b: 26 };
+    const max = Math.max(...rows.map((d) => d.n));
+    const width = (canvas.w - pad.l - pad.r) / rows.length;
+    ctx.strokeStyle = token("--hair");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, canvas.h - pad.b);
+    ctx.lineTo(canvas.w - pad.r, canvas.h - pad.b);
+    ctx.stroke();
+    rows.forEach((row, i) => {
+      const height = row.n / max * (canvas.h - pad.t - pad.b);
+      const x = pad.l + i * width;
+      const isNew = row.m >= newRulesFrom;
+      ctx.fillStyle = isNew ? token("--brass") : token("--muted");
+      ctx.globalAlpha = isNew ? 0.95 : 0.5;
+      ctx.fillRect(
+        x + 0.5,
+        canvas.h - pad.b - height,
+        Math.max(1, width - 1),
+        height
+      );
+      ctx.globalAlpha = 1;
+      if (row.m.endsWith("-01")) {
+        ctx.fillStyle = token("--muted");
+        ctx.font = "400 11px 'IBM Plex Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(row.m.slice(0, 4), x + width / 2, canvas.h - pad.b + 16);
+      }
+    });
+    ctx.fillStyle = token("--muted");
+    ctx.font = "400 11px 'IBM Plex Mono', monospace";
+    ctx.textAlign = "right";
+    for (const v of [0, Math.round(max / 2), max]) {
+      ctx.fillText(
+        String(v),
+        pad.l - 5,
+        canvas.h - pad.b - v / max * (canvas.h - pad.t - pad.b) + 4
+      );
+    }
+  }
+
+  // web/src/format.ts
+  function pct(value, digits = 2) {
+    if (value === null || value === void 0) return "\u2014";
+    return `${value > 0 ? "+" : ""}${value.toFixed(digits)}%`;
+  }
+  function sign(value) {
+    if (value === null || value === void 0) return "";
+    return value < 0 ? "neg" : "pos";
+  }
+  function pValue(value) {
+    if (value === null || value === void 0) return "\u2014";
+    return value < 1e-4 ? "<0.0001" : value.toFixed(4);
+  }
+  function thousands(value) {
+    return value.toLocaleString("en-US");
+  }
+
+  // web/src/links.ts
+  function yahooQuote(code, market) {
+    const suffix = market === "otc" ? "TWO" : "TW";
+    return `https://tw.stock.yahoo.com/quote/${encodeURIComponent(String(code))}.${suffix}`;
+  }
+  var EXTERNAL = 'target="_blank" rel="noopener noreferrer"';
+
+  // web/src/render.ts
+  var NEW_RULES_MONTH = "2026-08";
+  var STATE_CLASS = {
+    \u4ECA\u5929\u8CE3\u51FA: "now",
+    \u6301\u6709\u4E2D: "hold",
+    \u5C1A\u672A\u5230\u8CB7\u9EDE: "wait",
+    \u5DF2\u904E\u8CE3\u9EDE: "past"
+  };
+  function fill(id, text) {
+    const node = document.querySelector(`#${id}`);
+    if (node) node.textContent = text;
+  }
+  function html(id, markup) {
+    const node = document.querySelector(`#${id}`);
+    if (node) node.innerHTML = markup;
+  }
+  function meta(report) {
+    const c = report.coverage;
+    fill("m-range", `${c.from} \u2013 ${c.to}`);
+    fill("m-notice", thousands(c.notices));
+    fill("m-notice-mk", c.noticesMarket === "twse" ? "(\u50C5\u4E0A\u5E02)" : "");
+    fill("m-punish", thousands(c.punishes));
+    fill("m-days", thousands(c.tradingDays));
+    fill("m-bt", thousands(c.studied));
+    fill("m-codes", c.codes === void 0 ? "\u2014" : thousands(c.codes));
+    fill("m-markets", marketBreakdown(c.markets));
+    fill(
+      "m-drop",
+      String(c.dropped.lookahead + c.dropped.fakeRelease + c.dropped.unfilled)
+    );
+    fill("m-gen", report.generated);
+    fill("v-lookahead", thousands(c.dropped.lookahead));
+    fill("v-fake", thousands(c.dropped.fakeRelease));
+    fill("v-unfilled", thousands(c.dropped.unfilled));
+    fill("v-ratios", `\u90FD\u5728 ${ratioRange(report)} \u4E4B\u9593`);
+    fill(
+      "v-winrates",
+      `${pct(report.headline["\u52DD\u7387%"])} vs ${pct(report.afterRelease["\u52DD\u7387%"])}`
+    );
+    fill("rate", String(report.rate.\u6BCF\u6708\u5E73\u5747 ?? "\u2014"));
+  }
+  function ratioRange(report) {
+    const values = [report.winloss, report.winlossSecond].map((w) => w.\u8CFA\u8CE0\u6BD4).filter((v) => typeof v === "number");
+    if (values.length === 0) return "\u76F8\u8FD1";
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    return `${low.toFixed(2)} \u5230 ${high.toFixed(2)}`;
+  }
+  function marketBreakdown(markets) {
+    const label = { twse: "\u4E0A\u5E02", otc: "\u4E0A\u6AC3" };
+    const parts = Object.entries(markets ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(
+      ([key, m]) => `${label[key] ?? key} ${thousands(m.studied)}(${thousands(m.codes)} \u6A94)`
+    );
+    return parts.join(" \xB7 ") || "\u2014";
+  }
+  function priced(price, day, deferred = 0) {
+    if (price === null || day === null) return "\u2014";
+    const note = deferred > 0 ? ` <small class="qual">\u9806\u5EF6 ${deferred} \u5929</small>` : "";
+    return `${price.toFixed(2)} <small class="qual">${day.slice(5)}</small>${note}`;
+  }
+  function card(item) {
+    const second = item.measure === "\u7B2C\u4E8C\u6B21\u8655\u7F6E";
+    const state = STATE_CLASS[item.status] ?? "wait";
+    const realized = item.tradeState === "\u5DF2\u8CE3\u51FA";
+    return `
+ <article class="cell ${second ? "second" : ""}">
+  <div class="cell-top"><a class="quote" href="${yahooQuote(item.code, item.market)}" ${EXTERNAL} title="\u5728 Yahoo \u80A1\u5E02\u6253\u958B"><span class="code num">${item.code}</span>
+   <span class="nm">${item.name}</span></a>
+   <span class="tag">${second ? "\u5168\u984D\u9810\u6536" : "\u7B2C\u4E00\u6B21"}</span>${item.candidate ? '<span class="tag cand">\u5019\u9078</span>' : ""}</div>
+  <div class="why">${item.condition}<br>${item.start} \u2013 ${item.end}${item.candidate && item.w2 !== null ? `<br><b class="cand-note">\u6D41\u52D5\u6027 ${(item.w2 / 100).toFixed(1)} \u5104 \xB7 \u7B26\u5408\u7814\u7A76\u4E2D\u7684\u5019\u9078\u689D\u4EF6</b>` : ""}</div>
+  <div class="countdown"><span class="big num">${item.daysLeft}</span>
+   <small>\u5929\u5F8C\u51FA\u95DC(${item.release})</small></div>
+  <div class="plan">
+   <dl>
+    <dt>\u6536\u76E4</dt><dd>${priced(item.close, item.closeDay)}</dd>
+    <dt>${item.buyLate ? '\u53C3\u8003\u8CB7\u9EDE<small class="qual">\u516C\u544A\u5F8C\u6700\u65E9</small>' : "\u53C3\u8003\u8CB7\u9EDE t\u22126"}</dt><dd>${item.buyDay}</dd>
+    <dt>\u6A21\u64EC\u9032\u5834</dt><dd>${priced(item.entryPrice, item.entryDay, item.entryDeferred)}</dd>
+    <dt>\u53C3\u8003\u8CE3\u9EDE t\u22121</dt><dd>${item.sellDay}</dd>
+    <dt>\u6A21\u64EC\u51FA\u5834</dt><dd>${priced(item.exitPrice, item.exitDay, item.exitDeferred)}</dd>
+    <dt>${realized ? "\u5BE6\u73FE\u5831\u916C" : "\u76EE\u524D\u5831\u916C"}<small class="qual">\u6263\u6210\u672C</small></dt><dd class="num ${sign(item.tradeReturn)}">${pct(item.tradeReturn)} <small class="qual">${item.tradeState}</small></dd>
+    <dt>\u6B77\u53F2\u540C\u985E</dt><dd>${item.histN} \u7B46</dd>
+    <dt>\u4E2D\u4F4D\u6578 / \u52DD\u7387</dt><dd>${pct(item.histMedian)} / ${item.histWin}%</dd>
+    <dt>\u671F\u671B\u503C</dt><dd class="ev">${pct(item.histEV)}</dd>
+    <dt>\u8CFA\u6642 / \u8CE0\u6642</dt><dd>${pct(item.histWinAvg)} / ${pct(item.histLossAvg)}</dd>
+    <dt>\u6B77\u53F2\u6700\u6158</dt><dd>${pct(item.histWorst)}</dd>
+   </dl>
+   <span class="state ${state}">${item.status}</span>
+  </div>
+ </article>`;
+  }
+  function candidate(report) {
+    const c = report.candidate;
+    html(
+      "t-cand",
+      c.rows.map(
+        (r) => `<tr><td>${r.label}</td><td class="num">${thousands(r.n)}</td><td class="num ${sign(r.median)}">${pct(r.median)}</td><td class="num">${r.win.toFixed(1)}%</td><td class="num">${pct(r.low)} ~ ${pct(r.high)}</td></tr>`
+      ).join("")
+    );
+    html(
+      "t-cand-port",
+      c.portfolio.map(
+        (r) => `<tr><td>${r.label}</td><td class="num ${sign(r.annual)}">${pct(r.annual, 1)}</td><td class="num">${pct(r.mdd, 1)}</td><td class="num">${thousands(r.underwater)} \u5929</td></tr>`
+      ).join("")
+    );
+    fill("cand-freq", String(c.perMonth));
+    fill("cand-capital", thousands(c.capital / 1e4));
+  }
+  function verdict(report) {
+    const h = report.headline;
+    const w = report.winloss;
+    const a = report.afterRelease;
+    return `
+ <p>\u5728 <b class="num">${thousands(h.\u6A23\u672C\u6578)}</b> \u6B21\u8655\u7F6E\u88E1,\u65BC\u51FA\u95DC\u524D\u7B2C\u516D\u500B\u4EA4\u6613\u65E5\u6536\u76E4\u8CB7\u9032\u3001<strong>\u51FA\u95DC\u524D\u4E00\u65E5\u6536\u76E4\u8CE3\u51FA</strong>,\u8D85\u984D\u5831\u916C\u4E2D\u4F4D\u6578 <b class="num">${pct(h["\u4E2D\u4F4D\u6578%"])}</b>,\u52DD\u7387 <span class="num">${h["\u52DD\u7387%"]}%</span>\u3002\u5DF2\u6263\u6389\u4F86\u56DE\u6210\u672C\u8207\u5927\u76E4\u540C\u671F\u6F32\u8DCC\u3002</p>
+ <p>\u53CD\u904E\u4F86,<strong>\u7B49\u51FA\u95DC\u4E4B\u5F8C\u624D\u8CB7</strong>,\u6301\u6709\u4E94\u65E5\u7684\u4E2D\u4F4D\u6578\u662F <span class="num">${pct(a["\u4E2D\u4F4D\u6578%"])}</span>,\u52DD\u7387\u53EA\u6709 <span class="num">${a["\u52DD\u7387%"]}%</span>\u3002\u5E02\u5834\u4E0A\u5E38\u8AAA\u7684\u300C\u51FA\u95DC\u5FC5\u5674\u300D,\u8CC7\u6599\u4E0D\u652F\u6301 \u2014\u2014 \u5674\u7684\u90A3\u4E00\u6BB5\u767C\u751F\u5728\u51FA\u95DC\u4E4B\u524D\u3002</p>
+ <p>\u8CFA\u7684\u6642\u5019\u5E73\u5747 <span class="num">${pct(w["\u8CFA_\u5E73\u5747%"])}</span>,\u8CE0\u7684\u6642\u5019\u5E73\u5747 <span class="num">${pct(w["\u8CE0_\u5E73\u5747%"])}</span>,<strong>\u671F\u671B\u503C ${pct(w["\u671F\u671B\u503C%"])}</strong>\u3002\u56DB\u5206\u4F4D\u8DDD <span class="num">${pct(h["\u56DB\u5206\u4E4B\u4E00%"])}</span> \u5230 <span class="num">${pct(h["\u56DB\u5206\u4E4B\u4E09%"])}</span>,\u6700\u6158\u4E00\u6B21 <span class="num">${pct(h["\u6700\u5C0F%"])}</span> \u2014\u2014 \u4E2D\u4F4D\u6578\u662F\u6B63\u7684,\u4F46\u5C3E\u90E8\u5F88\u9577\u3002</p>`;
+  }
+  function cellText(label, value) {
+    if (label === "\u6A23\u672C") return thousands(value);
+    if (label === "\u52DD\u7387") return `${value.toFixed(1)}%`;
+    if (label === "\u8CFA\u8CE0\u6BD4") return value.toFixed(2);
+    return pct(value);
+  }
+  function winLossRows(a, b, after) {
+    const rows = [
+      ["\u6A23\u672C", (w) => w.\u5168\u90E8_\u6A23\u672C, after.\u6A23\u672C\u6578, false],
+      ["\u52DD\u7387", (w) => w["\u52DD\u7387%"], after["\u52DD\u7387%"], true],
+      ["\u8CFA\u7684\u5E73\u5747", (w) => w["\u8CFA_\u5E73\u5747%"], null, false],
+      ["\u8CFA\u7684\u4E2D\u4F4D\u6578", (w) => w["\u8CFA_\u4E2D\u4F4D\u6578%"], null, false],
+      ["\u8CE0\u7684\u5E73\u5747", (w) => w["\u8CE0_\u5E73\u5747%"], null, false],
+      ["\u8CE0\u7684\u4E2D\u4F4D\u6578", (w) => w["\u8CE0_\u4E2D\u4F4D\u6578%"], null, false],
+      ["\u8CFA\u8CE0\u6BD4", (w) => w.\u8CFA\u8CE0\u6BD4, null, false],
+      ["\u671F\u671B\u503C", (w) => w["\u671F\u671B\u503C%"], after["\u5E73\u5747%"], true]
+    ];
+    return rows.map(([label, pick, third, strong]) => {
+      const cells = [pick(a), pick(b), third].map(
+        (v) => v === null ? '<td class="num">\u2014</td>' : `<td class="num ${strong ? sign(v) : ""}">${cellText(label, v)}</td>`
+      ).join("");
+      return `<tr class="${strong ? "total" : ""}"><td>${label}</td>${cells}</tr>`;
+    }).join("");
+  }
+  function capitalLabel(capital) {
+    if (capital === "market") return "\u5927\u76E4(\u5168\u7A0B\u6301\u6709)";
+    if (capital === null) return "\u8CC7\u91D1\u7121\u9650";
+    return `${thousands(capital)} \u5143`;
+  }
+  function capitalRow(row, total) {
+    const isMarket = row.capital === "market";
+    const label = capitalLabel(row.capital);
+    return `<tr class="${isMarket ? "total" : ""}"><td>${label}</td>
+   <td class="num">${row.taken === null ? "\u2014" : `${row.taken}/${total}`}</td>
+   <td class="num ${sign(row.ret)}">${row.ret.toFixed(1)}%</td>
+   <td class="num">${row.ann.toFixed(1)}%</td>
+   <td class="num">${Math.round(row.days)}</td>
+   <td class="num ${isMarket ? "" : "sig"}">${Math.round(row.bp)} bp</td>
+   <td class="num">${row.concurrent ?? "\u2014"}</td></tr>`;
+  }
+  function tables(report) {
+    html(
+      "t-exit",
+      report.exits.map(
+        (e, i) => `<tr class="${i === 0 ? "total" : ""}"><td>${e.label}</td>
+   <td class="num">${thousands(e.n)}</td>
+   <td class="num ${sign(e.median)}">${pct(e.median)}</td>
+   <td class="num win">${e.win}%</td>
+   <td class="num ${e.p < 0.05 ? "sig" : "win"}">${pValue(e.p)}</td></tr>`
+      ).join("")
+    );
+    const h = report.headline;
+    html(
+      "t-years",
+      `${report.years.map(
+        (y) => `<tr class="${y.bear ? "bear" : ""}"><td>${y.name}</td>
+   <td class="num">${y.n}</td>
+   <td class="num ${sign(y.median)}">${pct(y.median)}</td>
+   <td class="num win">${y.win}%</td>
+   <td class="num ${y.p < 0.05 ? "sig" : "win"}">${pValue(y.p)}</td></tr>`
+      ).join("")}<tr class="total"><td>\u6574\u6BB5\u671F\u9593</td>
+   <td class="num">${thousands(h.\u6A23\u672C\u6578)}</td>
+   <td class="num ${sign(h["\u4E2D\u4F4D\u6578%"])}">${pct(h["\u4E2D\u4F4D\u6578%"])}</td>
+   <td class="num">${h["\u52DD\u7387%"]}%</td>
+   <td class="num sig">&lt;0.0001</td></tr>`
+    );
+    html(
+      "t-wl",
+      winLossRows(report.winloss, report.winlossSecond, report.afterRelease)
+    );
+    const secondTotal = report.caps[0]?.total ?? 0;
+    html(
+      "t-cap",
+      report.caps.map((row) => capitalRow(row, secondTotal)).join("")
+    );
+    html(
+      "t-off",
+      report.offenders.map(
+        (o) => `<tr><td><span class="code num">${o.code}</span> ${o.name}</td>
+   <td class="num">${o.total}</td><td class="num">${o.second}</td>
+   <td class="num ${o.second / o.total >= 0.6 ? "pos" : "win"}">${Math.round(o.second / o.total * 100)}%</td></tr>`
+      ).join("")
+    );
+  }
+  function render(report) {
+    meta(report);
+    html(
+      "board",
+      report.current.length > 0 ? report.current.map(card).join("") : '<p class="lede">\u76EE\u524D\u6C92\u6709\u500B\u80A1\u5728\u8655\u7F6E\u671F\u9593\u3002</p>'
+    );
+    html("verdict", verdict(report));
+    html(
+      "binomial",
+      `<h3>\u4E03\u5E74\u5168\u90E8\u662F\u6B63\u7684</h3>
+ <p style="margin:0">\u500B\u5225\u5E74\u4EFD\u56E0\u70BA\u6A23\u672C\u5C0F,\u6709\u5E7E\u5E74\u6C92\u5230\u986F\u8457\u3002\u4F46<strong>\u4E03\u500B\u671F\u9593\u7684\u4E2D\u4F4D\u6578\u5168\u90E8\u70BA\u6B63</strong> \u2014\u2014 \u82E5\u771F\u5BE6\u6548\u679C\u662F\u96F6,\u9019\u7A2E\u60C5\u6CC1\u51FA\u73FE\u7684\u6A5F\u7387\u662F 0.5<sup>7</sup> = <span class="num">${report.binomial}</span>\u3002\u65B9\u5411\u7684\u4E00\u81F4\u6027\u672C\u8EAB\u5C31\u662F\u8B49\u64DA\u3002<br>
+ \u9EC3\u5E95\u90A3\u5217\u662F <strong>2022 \u7A7A\u982D\u5E74</strong>,\u4E2D\u4F4D\u6578\u540C\u6A23\u70BA\u6B63,\u8207\u591A\u982D\u5E74\u6C92\u6709\u986F\u8457\u5DEE\u7570(p=0.83)\u3002\u9019\u652F\u6301\u300C\u6D41\u52D5\u6027\u6298\u50F9\u300D\u7684\u89E3\u91CB,\u800C\u4E0D\u662F\u300C\u591A\u982D\u6642\u4EC0\u9EBC\u90FD\u6703\u6F32\u300D\u3002</p>`
+    );
+    tables(report);
+    candidate(report);
+    const draw = () => {
+      drawPath(report.path.map((p) => [p.t, p.excess]));
+      drawMonthly(report.monthly, NEW_RULES_MONTH);
+    };
+    draw();
+    matchMedia("(prefers-color-scheme:dark)").addEventListener("change", draw);
+    let pending = 0;
+    window.addEventListener("resize", () => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(draw);
+    });
+  }
+
+  // web/src/report.ts
+  var REQUIRED_KEYS = [
+    "generated",
+    "coverage",
+    "path",
+    "current",
+    "headline",
+    "winloss",
+    "winlossSecond",
+    "years",
+    "exits",
+    "caps",
+    "afterRelease",
+    "rate",
+    "binomial",
+    "monthly",
+    "offenders",
+    "dist",
+    "candidate"
+  ];
+  function parseReport(raw) {
+    if (typeof raw !== "object" || raw === null) {
+      throw new TypeError("report.json \u4E0D\u662F\u7269\u4EF6");
+    }
+    const missing = REQUIRED_KEYS.filter((key) => !(key in raw));
+    if (missing.length > 0) {
+      throw new TypeError(`report.json \u7F3A\u5C11\u6B04\u4F4D:${missing.join("\u3001")}`);
+    }
+    return raw;
+  }
+
+  // web/src/main.ts
+  render(parseReport(REPORT_DATA));
+})();
+</script>
