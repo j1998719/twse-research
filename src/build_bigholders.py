@@ -137,8 +137,13 @@ def build(
         quote = quotes.get(code)
         if quote is None or not is_common_stock(code):
             continue
-        pct, people = _levels(bands)
         total = bands.get(SNAPSHOT_TOTAL_LEVEL)
+        if total is None or total.people <= 1:
+            # 減資、變更面額換發股票的期間,集保把全部股票記在一個持有人名下
+            # (2601 益航 2026-10-02:股東 1 人、千張級距 100%)。那不是大戶,
+            # 是換發中的暫時狀態,放進來會排在大戶持股第一名
+            continue
+        pct, people = _levels(bands)
         prev_pct = _levels(prev[code])[0] if code in prev else None
         rows.append(
             {

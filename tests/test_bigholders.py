@@ -169,3 +169,9 @@ def test_有還原因子檔就算(tmp_path: Path) -> None:
     lt = load_long_term(actions, history)
     assert lt is not None
     assert lt["2330"].close == 50.0
+
+
+def test_換發中只有一個持有人的股票不列() -> None:
+    # 2601 益航減資換發期間:全部股票在同一個持有人名下
+    reissue = _snapshot("20261002", {"2601": {15: (1, 100.0), 17: (1, 100.0)}})
+    assert build(reissue, None, {"2601": QUOTE})["rows"] == []
