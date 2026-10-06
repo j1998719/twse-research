@@ -29,6 +29,20 @@ step() {
 }
 FAILED=""
 
+# 同時只跑一份。第一次補資料要好幾個小時,可能跨過下一次 cron;兩份同時寫
+# 同一批 CSV 會互相蓋掉。鎖裡記 PID —— 被 kill -9 時 trap 不會執行,留下的
+# 鎖要能認出是死的,不然之後每天都會被它擋住
+LOCK="data/update.lock"
+if [[ -f "$LOCK" ]] && kill -0 "$(cat "$LOCK")" 2>/dev/null; then
+  say "另一份 update.sh(PID $(cat "$LOCK"))還在跑,這次跳過"
+  exit 0
+fi
+echo $$ > "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
+
+# 發布放在最後,處置股報告建好之後才推;報告那一步失敗時大戶頁照樣發布
+publish() { step "發布網頁到 GitHub Pages" ./publish_pages.sh; }
+
 # 上次成功是什麼時候。排程在睡著的機器上會整天不觸發,而失敗完全沒有痕跡
 # —— 2026-09-24 的排程掛掉之後四天沒人發現,資料就停在那裡
 if [[ -f "$STAMP" ]]; then
@@ -60,18 +74,19 @@ step "抓長期日線" .venv/bin/python -m src.fetch_history 2016-01-01 "$TODAY"
 step "抓除權息、減資、變更面額" .venv/bin/python -m src.fetch_actions 2016-01-01 "$TODAY"
 step "算大戶持股" .venv/bin/python -m src.build_bigholders
 step "建置大戶持股頁" npm run build:holders
-step "發布大戶持股頁到 GitHub Pages" ./publish_pages.sh
 
 # 這兩步要擋:資料不齊時不要拿壞掉的結果蓋掉好的報告
 say "算統計"
 if ! .venv/bin/python -m src.build_report >>"$LOG" 2>&1; then
   say "!! 算統計失敗,保留上一份報告不覆蓋。失敗的抓取:${FAILED:-無}"
+  publish
   exit 1
 fi
 
 say "建置網頁"
 if ! npm run build >>"$LOG" 2>&1; then
   say "!! 建置網頁失敗。失敗的抓取:${FAILED:-無}"
+  publish
   exit 1
 fi
 
@@ -85,5 +100,6 @@ print(f\"{c['backtested']} 筆可回測事件({parts})、{c.get('codes')} 檔\")
 if [[ -n "$FAILED" ]]; then
   say "!! 有抓取失敗:$FAILED —— 報告是用現有資料算的"
 fi
+publish
 date +%Y-%m-%dT%H:%M:%S > "$STAMP"
 say "=== 完成:$SUMMARY,產出 data/out/index.html ==="
