@@ -603,3 +603,36 @@ footer {
 	outline: 2px solid var(--brass);
 	outline-offset: 2px;
 }
+
+/* 網頁之間的導覽:GitHub Pages 上兩頁並列(publish_pages.sh) */
+.sitenav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 18px;
+}
+.sitenav a {
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--muted);
+	text-decoration: none;
+	padding: 8px 14px;
+	min-height: 40px;
+	display: inline-flex;
+	align-items: center;
+	border: 1.5px solid var(--hair);
+	border-radius: 999px;
+}
+.sitenav a:hover {
+	color: var(--ink);
+	border-color: var(--ink);
+}
+.sitenav a[aria-current="page"] {
+	color: var(--surface);
+	background: var(--ink);
+	border-color: var(--ink);
+}
+.sitenav a:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
