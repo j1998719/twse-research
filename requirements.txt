@@ -1,3 +1,4 @@
+certifi==2026.7.22
 coverage==7.16.1
 mdformat==1.0.0
 mdformat-gfm==1.0.0

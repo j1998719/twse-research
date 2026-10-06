@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from src.net import TLS
 from src.prices import to_float
 from src.tpex import is_common_stock
 
@@ -253,7 +254,7 @@ def fetch(source: Source, start: date, end: date) -> dict[str, Any]:
         f"&endDate={_param(end, tpex=source.tpex)}&response=json"
     )
     req = urllib.request.Request(f"{source.url}?{query}", headers=UA)  # noqa: S310
-    with urllib.request.urlopen(req, timeout=60) as res:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=60, context=TLS) as res:  # noqa: S310
         body: bytes = res.read()
     loaded: dict[str, Any] = json.loads(body)
     return loaded

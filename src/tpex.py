@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from src.net import TLS
 from src.prices import to_float
 
 
@@ -56,7 +57,7 @@ def _fetch(url: str, params: str) -> dict[str, Any]:
     request = urllib.request.Request(  # noqa: S310
         f"{url}?{params}&response=json", headers=UA
     )
-    with urllib.request.urlopen(request, timeout=60) as res:  # noqa: S310
+    with urllib.request.urlopen(request, timeout=60, context=TLS) as res:  # noqa: S310
         body: bytes = res.read()
     loaded: dict[str, Any] = json.loads(body)
     return loaded

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
+from src.net import TLS
 from src.twse import UA, is_common_stock
 
 
@@ -113,7 +114,7 @@ def fetch_day(
     # S310:網址由本模組的常數拼成,不是外部輸入,沒有 file: 之類的風險
     req = urllib.request.Request(url, headers={"User-Agent": UA})  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=30, context=TLS) as resp:  # noqa: S310
             payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError):
         time.sleep(pause * 4)  # 被擋就等久一點再讓呼叫端重試

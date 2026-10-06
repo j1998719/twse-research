@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
+from src.net import TLS
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -111,7 +113,7 @@ def parse_bands(html: str) -> dict[str, Band]:
 def available_weeks() -> list[date]:
     """查詢頁目前提供的資料日期。約 52 週,再往前就沒有了。"""
     req = urllib.request.Request(QRY_URL, headers=UA)
-    with urllib.request.urlopen(req, timeout=40) as res:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=40, context=TLS) as res:  # noqa: S310
         html = res.read().decode("utf-8", "replace")
     return [_as_date(s) for s in _DATE_OPTION.findall(html)]
 
@@ -131,7 +133,10 @@ def fetch_week(day: date, code: str) -> Week:
     伺服器會回一張空表,而不是回錯誤 —— 安靜地少掉一整週的資料。
     """
     jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(jar),
+        urllib.request.HTTPSHandler(context=TLS),
+    )
     with opener.open(urllib.request.Request(QRY_URL, headers=UA), timeout=40) as res:
         html = res.read().decode("utf-8", "replace")
     match = _TOKEN.search(html)
@@ -322,6 +327,6 @@ def snapshot_day(text: str) -> date | None:
 def fetch_snapshot() -> str:
     """抓全市場快照的原始 CSV。一週一次就夠,只有最新一週。"""
     req = urllib.request.Request(SNAPSHOT_URL, headers=UA)
-    with urllib.request.urlopen(req, timeout=180) as res:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=180, context=TLS) as res:  # noqa: S310
         body: bytes = res.read()
     return body.decode("utf-8-sig", "replace")

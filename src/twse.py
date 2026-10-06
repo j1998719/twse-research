@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from src.net import TLS
+
 
 NOTICE_URL = "https://www.twse.com.tw/rwd/zh/announcement/notice"
 PUNISH_URL = "https://www.twse.com.tw/rwd/zh/announcement/punish"
@@ -65,7 +67,7 @@ def fetch(
 
     # S310:網址由本模組的常數拼成,不是外部輸入,沒有 file: 之類的風險
     req = urllib.request.Request(url + params, headers={"User-Agent": UA})  # noqa: S310
-    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=30, context=TLS) as resp:  # noqa: S310
         payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
 
     if payload.get("stat") != "OK":
