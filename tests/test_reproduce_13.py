@@ -33,6 +33,10 @@ OUT = Path("data/out")
 RAW = Path("data/raw")
 #: [#13] 的主要發現:出關前六個交易日買、前一日賣
 PRE_RELEASE = Window(entry=-6, exit=-1)
+#: 寫死的歷史數字(2,265 筆、951 筆)是用這天以前的資料算的。之後每天都有
+#: 新的處置事件出關,不截在這天,樣本數每天都會長,釘住舊結論的測試就
+#: 變成「資料一更新就失敗」—— 而它要擋的是算法或舊資料被改動,不是新資料
+FROZEN = date(2026, 9, 28)
 
 pytestmark = pytest.mark.skipif(
     not (OUT / "report.json").exists(), reason="需要完整的 data/"
@@ -210,7 +214,7 @@ def both_benchmarks() -> dict[str, float]:
     new: list[float] = []
     for event in events:
         span = resolve_window(event, days, PRE_RELEASE)
-        if span is None or event.code not in closes:
+        if span is None or span[1] > FROZEN or event.code not in closes:
             continue
         got = window_excess(closes[event.code], closes, *span)
         if got is None:
@@ -254,6 +258,10 @@ def test_兩種基準的差距不大(both_benchmarks: dict) -> None:
     assert abs(gap) < 0.4
 
 
+def _as_date(value: object) -> date:
+    return value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
+
+
 @pytest.fixture(scope="module")
 def listed_only() -> dict[str, float]:
     """只用上市那一半重跑,當歷史基準。
@@ -274,6 +282,7 @@ def listed_only() -> dict[str, float]:
         all_punishes=listed,
     )
     clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+    clean = clean[clean.sell_day.map(_as_date) <= FROZEN]
     values = clean.excess.dropna().tolist()
     median, _ = one_sample(values)
     return {
