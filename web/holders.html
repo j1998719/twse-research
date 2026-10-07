@@ -50,19 +50,19 @@
     <span class="qual">大戶增減、股價變動都用這段期間</span>
    </label>
 
-   <fieldset class="presets" aria-label="我的條件">
-    <label class="slot-pick">我的條件
-     <select id="slot"></select>
-    </label>
-    <div class="preset-actions">
-     <button type="button" id="p-apply">套用</button>
-     <button type="button" id="p-save">把目前的條件存到這格</button>
-     <button type="button" id="p-clear">清空這格</button>
-    </div>
-    <div class="preset-rename">
-     <input id="p-name" type="text" maxlength="30" autocomplete="off" aria-label="這一格的名字">
-     <button type="button" id="p-rename">改名</button>
-    </div>
+   <fieldset class="presets" aria-labelledby="p-title">
+    <span class="label" id="p-title">我的條件</span>
+    <span id="p-list" class="chips"></span>
+    <button type="button" id="p-new" class="chip add">+ 存目前的條件</button>
+    <form id="p-form" class="p-form" hidden>
+     <input id="p-name" type="text" maxlength="30" autocomplete="off" aria-label="名字" placeholder="取個名字">
+     <button type="submit" id="p-ok">存</button>
+     <button type="button" id="p-cancel" class="link">取消</button>
+    </form>
+    <span id="p-tools" class="p-tools" hidden>
+     <button type="button" id="p-rename" class="link">改名</button>
+     <button type="button" id="p-delete" class="link">刪除</button>
+    </span>
     <p class="qual" id="p-msg" role="status"></p>
    </fieldset>
 
@@ -78,7 +78,7 @@
        <option value="">+ 選一個項目…</option>
       </select>
      </label>
-     <button type="button" class="reset" id="reset">恢復成爸爸的條件</button>
+     <button type="button" class="reset" id="reset">恢復預設</button>
     </div>
    </div>
 

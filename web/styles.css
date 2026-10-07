@@ -717,66 +717,84 @@ a.quote:focus-visible {
 	min-height: 44px;
 }
 
-/* 我的條件:10 格,套用、存、改名、清空(#53) */
+/* 我的條件:存過的一組一顆按鈕,點了就套用(#56) */
 .controls .presets {
 	border: 0;
 	margin: 0;
+	padding: 0;
 	min-width: 0;
-	display: grid;
-	gap: 10px;
-	padding: 14px 16px;
-	background: var(--brass-soft);
-	border-radius: 8px;
-}
-.controls .slot-pick {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
+}
+.controls .presets .label {
 	font-weight: 700;
 	color: var(--ink);
+	margin-right: 4px;
 }
-.controls .preset-actions,
-.controls .preset-rename {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
+.controls .chips {
+	display: contents;
 }
-.controls .presets select,
-.controls .presets input,
-.controls .presets button {
+.controls .presets button,
+.controls .presets input {
 	font: inherit;
 	font-size: 16px;
 	color: var(--ink);
 	background: var(--surface);
 	border: 1.5px solid var(--hair);
-	border-radius: 6px;
-	padding: 6px 12px;
+	border-radius: 999px;
+	padding: 6px 16px;
 	min-height: 44px;
-}
-.controls .presets select {
-	flex: 1 1 220px;
-	min-width: 0;
-}
-.controls .presets input {
-	flex: 1 1 180px;
-	min-width: 0;
-}
-.controls .presets button {
 	cursor: pointer;
-	font-weight: 500;
 }
-.controls .presets button:disabled {
+.controls .presets .chip[aria-pressed="true"] {
+	background: var(--ink);
+	color: var(--surface);
+	border-color: var(--ink);
+}
+.controls .presets .add {
+	border-style: dashed;
+	color: var(--muted);
+}
+.controls .presets .add:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
-.controls .presets select:focus-visible,
-.controls .presets input:focus-visible,
-.controls .presets button:focus-visible {
+.controls .presets button.link {
+	border: 0;
+	background: none;
+	padding: 6px 6px;
+	color: var(--brass);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.controls .p-form,
+.controls .p-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.controls .p-form[hidden],
+.controls .p-tools[hidden] {
+	display: none;
+}
+.controls .p-form input {
+	cursor: text;
+	border-radius: 6px;
+	width: 14em;
+	max-width: 100%;
+}
+.controls .presets button:focus-visible,
+.controls .presets input:focus-visible {
 	outline: 2px solid var(--brass);
 	outline-offset: 1px;
 }
 .controls .presets p {
+	flex-basis: 100%;
 	margin: 0;
-	min-height: 1.4em;
+}
+.controls .presets p:empty {
+	display: none;
 }

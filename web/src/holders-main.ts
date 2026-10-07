@@ -10,6 +10,9 @@ import { type HolderRow, type Holders, parseHolders } from "./holders.ts";
 import { EXTERNAL, yahooQuote } from "./links.ts";
 import {
 	cleanName,
+	firstEmpty,
+	matching,
+	type Preset,
 	type Presets,
 	restorePresets,
 	SLOTS,
@@ -88,7 +91,10 @@ let latestDay = "";
 let screen: Screen = defaultScreen();
 let shown = PAGE;
 let presets: Presets = [];
-let slot = 0;
+/** 名稱輸入框現在是在存新的、還是在改名;null = 收起來 */
+let formMode: "new" | "rename" | null = null;
+/** 剛刪掉的那組,可以復原 */
+let undo: { slot: number; preset: Preset } | null = null;
 
 /** 週資料目前最多能看幾週。預設和讀回來的條件都不要超過它 */
 function availableWeeks(): number {
@@ -338,6 +344,8 @@ function changed(redrawFilters = true): void {
 	if (redrawFilters) drawFilters();
 	persist();
 	draw();
+	// 改了條件,亮著的那組可能就不一樣了
+	drawPresets();
 }
 
 /** 張數按鈕。轉成陣列才能 for...of —— tsconfig 沒有開 DOM.Iterable */
@@ -465,61 +473,115 @@ function bindControls(): void {
 	});
 }
 
-// ---- 我的條件(10 格) ----
+// ---- 我的條件(#56):一組一顆按鈕,點了就套用 ----
 
-function drawPresets(message = ""): void {
-	el("slot").innerHTML = presets
-		.map(
-			(p, i) =>
-				`<option value="${i}">${i + 1}. ${p ? escapeHtml(p.name) : "(空)"}</option>`,
+/** 狀態列的一句話。html 只用在自己組出來的字串(名字都先 escape 過) */
+function say(html: string): void {
+	el("p-msg").innerHTML = html;
+}
+
+function drawPresets(): void {
+	const active = matching(presets, screen);
+	el("p-list").innerHTML = presets
+		.map((p, i) =>
+			p
+				? `<button type="button" class="chip" data-slot="${i}" aria-pressed="${i === active}">${escapeHtml(p.name)}</button>`
+				: "",
 		)
 		.join("");
-	el<HTMLSelectElement>("slot").value = String(slot);
-	const current = presets[slot] ?? null;
-	el<HTMLInputElement>("p-name").value = current ? current.name : "";
-	el<HTMLInputElement>("p-name").placeholder = `條件 ${slot + 1}`;
-	el<HTMLButtonElement>("p-apply").disabled = current === null;
-	el<HTMLButtonElement>("p-clear").disabled = current === null;
-	el("p-msg").textContent = message;
+	const full = firstEmpty(presets) === -1;
+	const add = el<HTMLButtonElement>("p-new");
+	add.disabled = full;
+	add.textContent = full ? `最多 ${SLOTS} 組` : "+ 存目前的條件";
+	add.hidden = formMode !== null;
+	el("p-form").hidden = formMode === null;
+	el("p-tools").hidden = active === -1 || formMode !== null;
 }
 
 function stored(ok: boolean, done: string): string {
 	return ok ? done : `${done}(這個瀏覽器不能儲存,重新整理後會不見)`;
 }
 
+function openForm(mode: "new" | "rename", name: string): void {
+	formMode = mode;
+	say("");
+	drawPresets();
+	const input = el<HTMLInputElement>("p-name");
+	input.value = name;
+	input.focus();
+	input.select();
+}
+
+function closeForm(): void {
+	formMode = null;
+	drawPresets();
+}
+
+/** 存新的,或把目前亮著的那組改名 */
+function submitForm(): void {
+	const typed = el<HTMLInputElement>("p-name").value;
+	if (formMode === "rename") {
+		const at = matching(presets, screen);
+		const p = presets[at];
+		if (p) {
+			p.name = cleanName(typed || p.name, at);
+			say(stored(savePresets(), `已改名為「${escapeHtml(p.name)}」`));
+		}
+	} else {
+		const at = firstEmpty(presets);
+		if (at !== -1) {
+			const name = cleanName(typed, at);
+			presets[at] = { name, screen: snapshot(screen) };
+			say(stored(savePresets(), `已存成「${escapeHtml(name)}」`));
+		}
+	}
+	formMode = null;
+	drawPresets();
+}
+
+function removeActive(): void {
+	const at = matching(presets, screen);
+	const p = presets[at];
+	if (!p) return;
+	presets[at] = null;
+	undo = { slot: at, preset: p };
+	const ok = savePresets();
+	drawPresets();
+	say(
+		`${stored(ok, `已刪除「${escapeHtml(p.name)}」`)} <button type="button" class="link" id="p-undo">復原</button>`,
+	);
+}
+
 function bindPresets(): void {
-	const pick = el<HTMLSelectElement>("slot");
-	pick.addEventListener("change", () => {
-		slot = Number(pick.value);
-		drawPresets();
-	});
-	el("p-apply").addEventListener("click", () => {
-		const p = presets[slot];
+	el("p-list").addEventListener("click", (e) => {
+		const at = Number((e.target as HTMLElement).dataset.slot);
+		const p = presets[at];
 		if (!p) return;
 		screen = { ...snapshot(p.screen), query: screen.query };
+		formMode = null;
+		say("");
 		changed();
-		drawPresets(`已套用「${p.name}」`);
 	});
-	el("p-save").addEventListener("click", () => {
-		const name = cleanName(
-			el<HTMLInputElement>("p-name").value || presets[slot]?.name || "",
-			slot,
-		);
-		presets[slot] = { name, screen: snapshot(screen) };
-		drawPresets(stored(savePresets(), `已存到第 ${slot + 1} 格「${name}」`));
+	el("p-new").addEventListener("click", () => openForm("new", ""));
+	el("p-rename").addEventListener("click", () =>
+		openForm("rename", presets[matching(presets, screen)]?.name ?? ""),
+	);
+	el("p-delete").addEventListener("click", removeActive);
+	el("p-cancel").addEventListener("click", closeForm);
+	el("p-form").addEventListener("submit", (e) => {
+		e.preventDefault();
+		submitForm();
 	});
-	el("p-rename").addEventListener("click", () => {
-		const p = presets[slot];
-		if (!p) {
-			drawPresets("這一格還是空的:先按「把目前的條件存到這格」,再改名");
-			return;
-		}
-		p.name = cleanName(el<HTMLInputElement>("p-name").value, slot);
-		drawPresets(stored(savePresets(), `已改名為「${p.name}」`));
+	el("p-name").addEventListener("keydown", (e) => {
+		if (e.key === "Escape") closeForm();
 	});
-	el("p-clear").addEventListener("click", () => {
-		presets[slot] = null;
-		drawPresets(stored(savePresets(), `第 ${slot + 1} 格已清空`));
+	el("p-msg").addEventListener("click", (e) => {
+		if ((e.target as HTMLElement).id !== "p-undo" || !undo) return;
+		presets[undo.slot] = undo.preset;
+		const name = undo.preset.name;
+		undo = null;
+		say(stored(savePresets(), `已復原「${escapeHtml(name)}」`));
+		drawPresets();
 	});
 }
 

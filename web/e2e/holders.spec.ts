@@ -26,7 +26,7 @@ async function bigText(page: Page, code: string): Promise<string> {
 	return (await row.locator("td").nth(at).innerText()).replace(/\s+/g, " ");
 }
 
-test("預設是爸爸的條件:大戶增加、股價沒動", async ({ page }) => {
+test("預設條件:大戶增加、股價沒動", async ({ page }) => {
 	await expect(page.locator("[data-lots='1000']")).toHaveAttribute(
 		"aria-pressed",
 		"true",
