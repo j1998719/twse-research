@@ -273,4 +273,10 @@ export function render(report: Report): void {
 	};
 	draw();
 	matchMedia("(prefers-color-scheme:dark)").addEventListener("change", draw);
+	// 畫布照顯示寬度建立,轉橫向或拉視窗要重畫
+	let pending = 0;
+	window.addEventListener("resize", () => {
+		cancelAnimationFrame(pending);
+		pending = requestAnimationFrame(draw);
+	});
 }

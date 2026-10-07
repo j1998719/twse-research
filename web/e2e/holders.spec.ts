@@ -7,56 +7,20 @@
  * - 2330 台積電 2585 元:大戶 +1.77,但股價 +12.4%
  */
 
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { BUILT } from "./setup.ts";
+import { overflowX, shot, usePage } from "./common.ts";
 
-const PAGE = pathToFileURL(join(BUILT, "holders.html")).href;
-const SCREENS = join(BUILT, "..", "screens");
-
-/** 頁面上的 JS 錯誤都收起來,每個測試最後確認是空的 */
-let errors: string[] = [];
-
-test.beforeEach(async ({ page }) => {
-	errors = [];
-	page.on("pageerror", (e) => errors.push(String(e)));
-	page.on("console", (m) => {
-		if (m.type() === "error") errors.push(m.text());
-	});
-	await page.goto(PAGE);
-	await page.evaluate(() => localStorage.clear());
-	await page.reload();
-});
-
-test.afterEach(() => {
-	expect(errors).toEqual([]);
-});
-
-async function shot(page: Page, name: string): Promise<void> {
-	const project = test.info().project.name;
-	await page.screenshot({
-		path: join(SCREENS, `${project}-${name}.png`),
-		fullPage: true,
-	});
-}
+usePage("");
 
 /** 表格每一列的代號,照畫面順序 */
 async function codes(page: Page): Promise<string[]> {
 	return page.locator("#rows .code").allTextContents();
 }
 
-/** 某一檔「大戶持股」那格的文字 */
-function bigCell(page: Page, code: string) {
+async function bigText(page: Page, code: string): Promise<string> {
 	const row = page.locator("#rows tr", {
 		has: page.locator(".code", { hasText: code }),
 	});
-	const col = page.locator("#head th", { hasText: "大戶持股(" });
-	return { row, col };
-}
-
-async function bigText(page: Page, code: string): Promise<string> {
-	const { row } = bigCell(page, code);
 	const heads = await page.locator("#head th").allTextContents();
 	const at = heads.findIndex((h) => h.startsWith("大戶持股("));
 	return (await row.locator("td").nth(at).innerText()).replace(/\s+/g, " ");
@@ -170,9 +134,6 @@ test("舊版存的 level 讀得回來", async ({ page }) => {
 
 test("頁面不會橫向捲動", async ({ page }) => {
 	await page.selectOption("#big-by", "amount");
-	const overflow = await page.evaluate(
-		() => document.documentElement.scrollWidth - window.innerWidth,
-	);
-	expect(overflow).toBeLessThanOrEqual(0);
+	expect(await overflowX(page)).toBeLessThanOrEqual(0);
 	await shot(page, "amount-full");
 });

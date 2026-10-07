@@ -64,3 +64,23 @@ def test_巢狀結構的關鍵欄位():
         assert {"buyDay", "sellDay", "status", "histEV"} <= set(item)
         # 同類統計是哪個市場算的,以及有沒有退回混合
         assert {"market", "histPooled"} <= set(item)
+
+
+def test_瀏覽器測試的假資料跟型別定義一致():
+    # web/e2e 用這份假資料建處置股頁;欄位漂移的話,瀏覽器測試會測到不存在的形狀
+    fixture = ROOT / "web" / "e2e" / "fixtures" / "report.json"
+    data = json.loads(fixture.read_text(encoding="utf-8"))
+    assert set(data) == declared_keys()
+    fields = set(
+        re.findall(
+            r"^\t(\w+):",
+            re.search(
+                r"interface Current \{(.*?)\n\}",
+                TYPES.read_text(encoding="utf-8"),
+                re.DOTALL,
+            ).group(1),  # type: ignore[union-attr]
+            re.MULTILINE,
+        )
+    )
+    for item in data["current"]:
+        assert set(item) == fields, item["code"]
