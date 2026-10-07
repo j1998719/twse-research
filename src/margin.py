@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.net import TLS
-from src.prices import SATURDAY, to_float
+from src.prices import surely_closed, to_float
 from src.tpex import is_common_stock
 
 
@@ -165,7 +165,7 @@ def cached(
     time.sleep(pause)
 
     if not _has_data(payload, otc=otc):
-        if day.weekday() >= SATURDAY:
+        if surely_closed(day):
             path.write_text("", encoding="utf-8")
         return None
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

@@ -1,6 +1,6 @@
 """資料列取自 2026-10-06 的真實回應,只留需要的幾列。"""
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -9,9 +9,19 @@ import src.chips
 import src.margin
 from src.chips import parse_otc_chips
 from src.margin import Margin, cached, parse_otc, parse_twse, qualified_fields
+from src.prices import TAIPEI
 
 
 DAY = date(2026, 10, 6)
+
+
+def _recent_weekday() -> date:
+    """最近的平日(不是今天)。寫死日期的話,30 天後它就變成「很久以前」了"""
+    day = datetime.now(tz=TAIPEI).date() - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
 
 TWSE = {
     "stat": "OK",
@@ -282,12 +292,18 @@ class _Response:
 
 @pytest.mark.parametrize(
     ("day", "remembered"),
-    [(date(2026, 10, 3), True), (date(2026, 9, 28), False)],
+    [
+        # 週六,一定是休市
+        (date(2026, 10, 3), True),
+        # 最近的平日,可能是限流,不能記住
+        (_recent_weekday(), False),
+        # 很久以前的平日(2020 元旦)一定是假日,記住(#48)
+        (date(2020, 1, 1), True),
+    ],
 )
-def test_沒有資料_只有週末記成空檔案(
+def test_沒有資料_週末和很久以前的平日才記成空檔案(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, day: date, remembered: bool
 ) -> None:
-    # 10-03 是週六;09-28 是週一(教師節),平日沒資料可能是限流,不能記住
     monkeypatch.setattr(
         src.margin.urllib.request,
         "urlopen",
@@ -321,5 +337,26 @@ def test_上櫃三大法人_平日沒資料不記住(
         "urlopen",
         lambda *_a, **_k: _Response(b'{"stat": "ok", "tables": []}'),
     )
-    assert src.chips.fetch_otc_chips(date(2026, 9, 28), tmp_path, pause=0) is None
+    assert src.chips.fetch_otc_chips(_recent_weekday(), tmp_path, pause=0) is None
     assert not list(tmp_path.iterdir())
+
+
+class TestSurelyClosed:
+    TODAY = date(2026, 10, 7)
+
+    def test_週末一定算(self) -> None:
+        from src.prices import surely_closed
+
+        assert surely_closed(date(2026, 10, 4), self.TODAY)
+
+    def test_最近的平日不算_可能是限流(self) -> None:
+        from src.prices import surely_closed
+
+        assert not surely_closed(date(2026, 9, 28), self.TODAY)
+
+    def test_超過三十天的平日算(self) -> None:
+        from src.prices import SETTLED_DAYS, surely_closed
+
+        edge = self.TODAY - timedelta(days=SETTLED_DAYS)
+        assert not surely_closed(edge, self.TODAY)
+        assert surely_closed(edge - timedelta(days=1), self.TODAY)

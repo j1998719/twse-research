@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.net import TLS
-from src.prices import SATURDAY, to_float
+from src.prices import surely_closed, to_float
 from src.twse import UA, is_common_stock
 
 
@@ -200,7 +200,7 @@ def fetch_otc_chips(
     time.sleep(pause)
     tables = payload.get("tables") or []
     if not tables or not tables[0].get("data"):
-        if day.weekday() >= SATURDAY:
+        if surely_closed(day):
             cached.write_text("", encoding="utf-8")
         return None
     cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

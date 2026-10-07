@@ -10,8 +10,9 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from src.net import TLS
 from src.twse import UA, is_common_stock
@@ -32,8 +33,23 @@ SATURDAY = 5
 #: 本益比在第 16 欄(索引 15)
 PER_COLUMN = 15
 
-#: 星期六是 5,所以小於 5 就是平日
-SATURDAY = 5
+
+#: 這麼多天以前的平日如果還是沒資料,就一定是休市 —— 限流或暫時性錯誤不會
+#: 持續一個月。比這更近的平日照舊不記,下次再問(見 fetch_day 的說明)
+SETTLED_DAYS = 30
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+def surely_closed(day: date, today: date | None = None) -> bool:
+    """沒有資料的這一天,可以記成休市、以後不再問嗎(#48)。
+
+    週末一定可以。平日只有夠久以前才可以:否則 2020 年以來約 80 個平日假日,
+    每一次更新都要每個來源重問一遍(每天多花十幾分鐘)。
+    """
+    if day.weekday() >= SATURDAY:
+        return True
+    now = today or datetime.now(tz=TAIPEI).date()
+    return (now - day).days > SETTLED_DAYS
 
 
 def to_float(text: str) -> float | None:
@@ -131,7 +147,7 @@ def fetch_day(
         #
         # 平日不寫快取,下次跑會再問一次。代價是真的國定假日每次都會多問
         # 一次,那比永久少一天資料便宜太多。
-        if day.weekday() >= SATURDAY:
+        if surely_closed(day):
             cached.write_text("", encoding="utf-8")
         return None
 
