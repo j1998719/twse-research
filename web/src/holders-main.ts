@@ -9,6 +9,15 @@ import { thousands } from "./format.ts";
 import { type HolderRow, type Holders, parseHolders } from "./holders.ts";
 import { EXTERNAL, yahooQuote } from "./links.ts";
 import {
+	cleanName,
+	type Presets,
+	restorePresets,
+	SLOTS,
+	serialise,
+	snapshot,
+	starterPresets,
+} from "./presets.ts";
+import {
 	columns,
 	ctx,
 	defaultScreen,
@@ -29,7 +38,9 @@ declare const HOLDERS_DATA: unknown;
 /** 一次畫幾列。全市場一千多檔一次畫完,手機會卡 */
 const PAGE = 100;
 /** 記住自己堆的條件。只在這個瀏覽器,換裝置不會跟著走 */
-const STORE = "holders.screen.v1";
+const STORE = "holders.screen.v2";
+/** 10 個儲存格(#53)。同樣只在這個瀏覽器 */
+const PRESET_STORE = "holders.presets.v1";
 /** 標題要帶出目前大戶門檻的欄位 */
 const LEVELLED: readonly MetricKey[] = [
 	"big",
@@ -73,13 +84,43 @@ let data: Holders;
 let latestDay = "";
 let screen: Screen = defaultScreen();
 let shown = PAGE;
+let presets: Presets = [];
+let slot = 0;
+
+/** 週資料目前最多能看幾週。預設和讀回來的條件都不要超過它 */
+function availableWeeks(): number {
+	return Math.max(1, Math.min(MAX_WEEKS, data.weeks.length - 1));
+}
 
 function load(): Screen {
 	try {
 		const raw = localStorage.getItem(STORE);
-		return raw ? restore(JSON.parse(raw)) : defaultScreen();
+		return raw
+			? restore(JSON.parse(raw), MAX_WEEKS)
+			: defaultScreen(availableWeeks());
 	} catch {
-		return defaultScreen();
+		return defaultScreen(availableWeeks());
+	}
+}
+
+function loadPresets(): Presets {
+	const dad = defaultScreen(availableWeeks());
+	try {
+		const raw = localStorage.getItem(PRESET_STORE);
+		return raw
+			? restorePresets(JSON.parse(raw), dad, MAX_WEEKS)
+			: starterPresets(dad);
+	} catch {
+		return starterPresets(dad);
+	}
+}
+
+function savePresets(): boolean {
+	try {
+		localStorage.setItem(PRESET_STORE, JSON.stringify(serialise(presets)));
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -307,7 +348,7 @@ function bindFilters(): void {
 		changed();
 	});
 	el("reset").addEventListener("click", () => {
-		screen = { ...defaultScreen(), query: screen.query };
+		screen = { ...defaultScreen(availableWeeks()), query: screen.query };
 		changed();
 	});
 }
@@ -354,6 +395,64 @@ function bindControls(): void {
 	});
 }
 
+// ---- 我的條件(10 格) ----
+
+function drawPresets(message = ""): void {
+	el("slot").innerHTML = presets
+		.map(
+			(p, i) =>
+				`<option value="${i}">${i + 1}. ${p ? escapeHtml(p.name) : "(空)"}</option>`,
+		)
+		.join("");
+	el<HTMLSelectElement>("slot").value = String(slot);
+	const current = presets[slot] ?? null;
+	el<HTMLInputElement>("p-name").value = current ? current.name : "";
+	el<HTMLInputElement>("p-name").placeholder = `條件 ${slot + 1}`;
+	el<HTMLButtonElement>("p-apply").disabled = current === null;
+	el<HTMLButtonElement>("p-clear").disabled = current === null;
+	el("p-msg").textContent = message;
+}
+
+function stored(ok: boolean, done: string): string {
+	return ok ? done : `${done}(這個瀏覽器不能儲存,重新整理後會不見)`;
+}
+
+function bindPresets(): void {
+	const pick = el<HTMLSelectElement>("slot");
+	pick.addEventListener("change", () => {
+		slot = Number(pick.value);
+		drawPresets();
+	});
+	el("p-apply").addEventListener("click", () => {
+		const p = presets[slot];
+		if (!p) return;
+		screen = { ...snapshot(p.screen), query: screen.query };
+		changed();
+		drawPresets(`已套用「${p.name}」`);
+	});
+	el("p-save").addEventListener("click", () => {
+		const name = cleanName(
+			el<HTMLInputElement>("p-name").value || presets[slot]?.name || "",
+			slot,
+		);
+		presets[slot] = { name, screen: snapshot(screen) };
+		drawPresets(stored(savePresets(), `已存到第 ${slot + 1} 格「${name}」`));
+	});
+	el("p-rename").addEventListener("click", () => {
+		const p = presets[slot];
+		if (!p) {
+			drawPresets("這一格還是空的:先按「把目前的條件存到這格」,再改名");
+			return;
+		}
+		p.name = cleanName(el<HTMLInputElement>("p-name").value, slot);
+		drawPresets(stored(savePresets(), `已改名為「${p.name}」`));
+	});
+	el("p-clear").addEventListener("click", () => {
+		presets[slot] = null;
+		drawPresets(stored(savePresets(), `第 ${slot + 1} 格已清空`));
+	});
+}
+
 function main(): void {
 	data = parseHolders(HOLDERS_DATA);
 	latestDay = data.rows.reduce((max, r) => (r.day > max ? r.day : max), "");
@@ -363,9 +462,14 @@ function main(): void {
 	if (data.prevDay !== null)
 		el("m-prev").textContent = `(比較 ${data.prevDay})`;
 	screen = load();
+	presets = loadPresets();
+	if (presets.length !== SLOTS)
+		presets = starterPresets(defaultScreen(availableWeeks()));
 	fillSelects();
 	bindFilters();
 	bindControls();
+	bindPresets();
+	drawPresets();
 	drawFilters();
 	draw();
 }

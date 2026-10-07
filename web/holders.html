@@ -38,6 +38,22 @@
     <span class="qual">大戶增減、股價變動都用這段期間</span>
    </label>
 
+   <fieldset class="presets" aria-label="我的條件">
+    <label class="slot-pick">我的條件
+     <select id="slot"></select>
+    </label>
+    <div class="preset-actions">
+     <button type="button" id="p-apply">套用</button>
+     <button type="button" id="p-save">把目前的條件存到這格</button>
+     <button type="button" id="p-clear">清空這格</button>
+    </div>
+    <div class="preset-rename">
+     <input id="p-name" type="text" maxlength="30" autocomplete="off" aria-label="這一格的名字">
+     <button type="button" id="p-rename">改名</button>
+    </div>
+    <p class="qual" id="p-msg" role="status"></p>
+   </fieldset>
+
    <div class="builder">
     <div class="builder-head">
      <h2 class="builder-title">條件</h2>
@@ -50,7 +66,7 @@
        <option value="">+ 選一個項目…</option>
       </select>
      </label>
-     <button type="button" class="reset" id="reset">恢復預設</button>
+     <button type="button" class="reset" id="reset">恢復成爸爸的條件</button>
     </div>
    </div>
 

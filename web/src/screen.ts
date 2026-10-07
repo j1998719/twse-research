@@ -313,15 +313,34 @@ export interface Screen {
 	query: string;
 }
 
-/** 打開就有東西看:成交量至少 100 張,依大戶持股比例排(跟改版前的第一個分頁一樣) */
-export function defaultScreen(): Screen {
+/**
+ * 打開就看到爸爸要的那組(#49、#53):過去 4 週千張大戶持股增加至少 0.5 百分點、
+ * 同期股價變動不超過 5%,大戶增加最多的排前面。週資料還沒補到 4 週時,
+ * 先用目前有的最多週數(maxWeeks),不要一打開就是空的。
+ */
+export function defaultScreen(maxWeeks: number = MAX_WEEKS): Screen {
 	return {
 		level: 3,
-		weeks: 4,
+		weeks: Math.max(1, Math.min(4, maxWeeks)),
 		filters: [
-			{ id: 1, on: true, kind: "metric", metric: "lots", op: ">=", value: 100 },
+			{
+				id: 1,
+				on: true,
+				kind: "metric",
+				metric: "bigChgN",
+				op: ">=",
+				value: 0.5,
+			},
+			{
+				id: 2,
+				on: true,
+				kind: "metric",
+				metric: "priceMoveN",
+				op: "<=",
+				value: 5,
+			},
 		],
-		sort: "big",
+		sort: "bigChgN",
 		dir: "desc",
 		query: "",
 	};
@@ -396,8 +415,8 @@ export function columns(screen: Screen): MetricKey[] {
 export const MAX_WEEKS = 8;
 
 /** 從 localStorage 讀回來的東西不可信:欄位不對就整個用預設 */
-export function restore(raw: unknown): Screen {
-	const fallback = defaultScreen();
+export function restore(raw: unknown, maxWeeks: number = MAX_WEEKS): Screen {
+	const fallback = defaultScreen(maxWeeks);
 	if (typeof raw !== "object" || raw === null) return fallback;
 	const s = raw as Partial<Screen>;
 	const level = [0, 1, 2, 3].includes(Number(s.level))

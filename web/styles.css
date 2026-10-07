@@ -664,14 +664,14 @@ a.quote:focus-visible {
 }
 
 /* 「過去 n 週」選單:跟大戶門檻同一排的設定 */
-.weeks-pick {
+.controls .weeks-pick {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	font-weight: 700;
 }
-.weeks-pick select {
+.controls .weeks-pick select {
 	font: inherit;
 	font-size: 17px;
 	color: var(--ink);
@@ -680,4 +680,68 @@ a.quote:focus-visible {
 	border-radius: 6px;
 	padding: 6px 10px;
 	min-height: 44px;
+}
+
+/* 我的條件:10 格,套用、存、改名、清空(#53) */
+.controls .presets {
+	border: 0;
+	margin: 0;
+	min-width: 0;
+	display: grid;
+	gap: 10px;
+	padding: 14px 16px;
+	background: var(--brass-soft);
+	border-radius: 8px;
+}
+.controls .slot-pick {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-weight: 700;
+	color: var(--ink);
+}
+.controls .preset-actions,
+.controls .preset-rename {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.controls .presets select,
+.controls .presets input,
+.controls .presets button {
+	font: inherit;
+	font-size: 16px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 6px 12px;
+	min-height: 44px;
+}
+.controls .presets select {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+.controls .presets input {
+	flex: 1 1 180px;
+	min-width: 0;
+}
+.controls .presets button {
+	cursor: pointer;
+	font-weight: 500;
+}
+.controls .presets button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.controls .presets select:focus-visible,
+.controls .presets input:focus-visible,
+.controls .presets button:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+}
+.controls .presets p {
+	margin: 0;
+	min-height: 1.4em;
 }
