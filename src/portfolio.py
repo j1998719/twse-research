@@ -6,7 +6,9 @@
 
 - 每天評價:現金 + Σ 持股 × 當天收盤(停牌用最後一個收盤)。只在進出場評價
   等於假設持有期間不會回檔,會系統性低估 MDD
-- 資金排擠:每個訊號買 1 張(跟 capital.py 同一個假設),錢不夠就跳過
+- 部位大小三種 mode(#33,Jordan 2026-10-07:「應該是不同 mode」):
+  lot = 每筆 1 張(跟 capital.py 一樣);fixed = 每筆本金的 10%;fraction = 每筆
+  前一天收盤淨值的 10%。後兩種取整數股(允許零股)。錢不夠買足就跳過
 - 同一天先賣再買:收盤賣掉的錢,當天收盤就能再用
 - 來回成本在賣出時一次扣
 
@@ -17,7 +19,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 
@@ -29,6 +31,11 @@ if TYPE_CHECKING:
 
 #: 一張 = 1000 股
 LOT = 1000
+#: fixed / fraction 每筆佔本金或淨值的比例(#33 事前登記,不掃)
+SHARE = 0.10
+#: 部位大小的 mode
+Sizing = Literal["lot", "fixed", "fraction"]
+SIZINGS: tuple[Sizing, ...] = ("lot", "fixed", "fraction")
 
 
 @dataclass(frozen=True)
@@ -80,8 +87,23 @@ def _positions(trades: pd.DataFrame) -> dict[pd.Timestamp, list[Position]]:
     return out
 
 
+def _shares(
+    sizing: Sizing, price: float, capital: float, nav: float, lot: int, share: float
+) -> int:
+    """這筆要買幾股。0 代表連 1 股都買不起。"""
+    if sizing == "lot":
+        return lot
+    budget = capital * share if sizing == "fixed" else nav * share
+    return int(budget // price)
+
+
 def simulate(
-    trades: pd.DataFrame, closes: pd.DataFrame, capital: float, lot: int = LOT
+    trades: pd.DataFrame,
+    closes: pd.DataFrame,
+    capital: float,
+    lot: int = LOT,
+    sizing: Sizing = "lot",
+    share: float = SHARE,
 ) -> Portfolio:
     """照日曆跑一遍。
 
@@ -91,6 +113,9 @@ def simulate(
     持股市值 = 買進金額 × 當天收盤 / 買進日收盤。closes 給還原收盤的話,
     除息那天淨值不會憑空掉一截(股息算回來),減資也不會憑空漲一截(#59)。
     """
+    if sizing not in SIZINGS:
+        msg = f"sizing 只能是 {SIZINGS},收到 {sizing!r}"
+        raise ValueError(msg)
     marks = closes.sort_index().ffill()
     days = pd.DatetimeIndex(marks.index)
     column = {str(code): i for i, code in enumerate(marks.columns)}
@@ -99,37 +124,38 @@ def simulate(
     keep = 1 - ROUND_TRIP_COST_PCT / 100
 
     cash = float(capital)
-    held: list[Position] = []
-    #: 每個部位買進那天在 days 裡的位置。市值是相對於那天收盤的漲跌
-    base: dict[Position, int] = {}
+    #: 持有中:(部位, 股數, 買進那天在 days 裡的位置)。市值是相對於那天收盤的漲跌
+    held: list[tuple[Position, int, int]] = []
     pnls: list[float] = []
     taken = skipped = most = 0
     equity: list[float] = []
     for i, day in enumerate(days):
-        # 先賣:收盤賣掉的錢,當天收盤就能再用
-        for pos in [p for p in held if p.sell_day == day]:
-            proceeds = pos.buy * lot * pos.ratio * keep
+        # 先賣,收盤賣掉的錢當天收盤就能再用
+        for item in [h for h in held if h[0].sell_day == day]:
+            pos, shares, _ = item
+            proceeds = pos.buy * shares * pos.ratio * keep
             cash += proceeds
-            pnls.append(proceeds - pos.buy * lot)
-            held.remove(pos)
-        # 再買:錢不夠買 1 張就跳過這個訊號
+            pnls.append(proceeds - pos.buy * shares)
+            held.remove(item)
+        # 再買,錢不夠買足就跳過這個訊號
+        nav = equity[-1] if equity else float(capital)
         for pos in by_buy.get(day, []):
-            if pos.buy * lot > cash:
+            shares = _shares(sizing, pos.buy, capital, nav, lot, share)
+            if shares <= 0 or pos.buy * shares > cash:
                 skipped += 1
                 continue
-            cash -= pos.buy * lot
-            held.append(pos)
-            base[pos] = i
+            cash -= pos.buy * shares
+            held.append((pos, shares, i))
             taken += 1
         most = max(most, len(held))
         value = sum(
-            p.buy
-            * lot
-            * float(prices[i, column[p.code]])
-            / float(prices[base[p], column[p.code]])
-            for p in held
+            pos.buy
+            * shares
+            * prices[i, column[pos.code]]
+            / prices[at, column[pos.code]]
+            for pos, shares, at in held
         )
-        equity.append(cash + value)
+        equity.append(cash + float(value))
 
     return Portfolio(
         capital=float(capital),

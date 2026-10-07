@@ -96,13 +96,59 @@ def test_最長連續虧損筆數() -> None:
     assert losing_streak([-1.0, 0.0, -1.0]) == 1
 
 
-def test_持有期間有股本事件的交易要標出來() -> None:
-    from src.run_portfolio import touched_by_actions
+# ---- 部位大小的三種 mode(#33,Jordan 2026-10-07)----
 
-    runs = pd.DataFrame(
-        {"code": ["A", "A", "B"], "buy_day": [DAYS[0]] * 3, "sell_day": [DAYS[2]] * 3}
+
+def test_fixed_每筆本金的_10_趴_允許零股() -> None:
+    closes = _closes(A=[300] * 6)
+    out = simulate(
+        _trades(("A", 1, 3, 300.0, 330.0)), closes, capital=1_000_000, sizing="fixed"
     )
-    runs.loc[1, "code"] = "C"
-    actions = pd.DataFrame({"code": ["A", "B"], "day": [DAYS[2], DAYS[0]]})
-    # A:賣出日當天除息 → 算;B:買進日當天 → 不算(買的是除息後的價);C:沒有事件
-    assert touched_by_actions(runs, actions).tolist() == [True, False, False]
+    # 10 萬 / 300 元 = 333 股(零股);賺 10%
+    shares = 333
+    assert out.equity.iloc[2] == 1_000_000  # 持有中、價格沒動
+    assert out.equity.iloc[3] == pytest.approx(
+        1_000_000 - shares * 300 + shares * 330 * (1 - COST)
+    )
+
+
+def test_fixed_不隨淨值變() -> None:
+    closes = _closes(A=[100] * 6, B=[100] * 6)
+    trades = _trades(("A", 0, 1, 100.0, 200.0), ("B", 2, 4, 100.0, 100.0))
+    out = simulate(trades, closes, capital=1_000_000, sizing="fixed")
+    # A 賺了一倍,B 還是只買 10 萬 = 1,000 股(本金的 10%),不是淨值的 10%:
+    # B 價格沒動,賣掉時淨值只少了這 1,000 股的成本
+    assert out.equity.iloc[4] == pytest.approx(out.equity.iloc[3] - 1000 * 100 * COST)
+    assert out.taken == 2
+
+
+def test_fraction_用前一天淨值的_10_趴() -> None:
+    closes = _closes(A=[100, 200, 200, 200, 200, 200], B=[100] * 6)
+    trades = _trades(("A", 0, 1, 100.0, 200.0), ("B", 3, 5, 100.0, 110.0))
+    out = simulate(trades, closes, capital=1_000_000, sizing="fraction")
+    # A:10 萬買 1,000 股,翻倍賣掉;D2 收盤淨值 = 90 萬 + 20 萬 × (1 − 成本)
+    nav = 900_000 + 200_000 * (1 - COST)
+    shares = int(nav * 0.10 // 100)
+    assert out.equity.iloc[-1] == pytest.approx(
+        nav - shares * 100 + shares * 110 * (1 - COST)
+    )
+
+
+def test_現金不夠買足目標金額就跳過() -> None:
+    closes = _closes(**{c: [100] * 6 for c in "ABCDEFGHIJKL"})
+    trades = _trades(*[(c, 1, 4, 100.0, 100.0) for c in "ABCDEFGHIJKL"])
+    out = simulate(trades, closes, capital=1_000_000, sizing="fixed")
+    # 每筆 10 萬,100 萬只買得起 10 筆;成本在賣出時才扣,所以剛好 10 筆
+    assert (out.taken, out.skipped) == (10, 2)
+
+
+def test_lot_是預設() -> None:
+    closes = _closes(A=[100] * 6)
+    out = simulate(_trades(("A", 1, 3, 100.0, 100.0)), closes, capital=1_000_000)
+    assert out.equity.iloc[2] == 1_000_000
+    assert out.max_concurrent == 1
+
+
+def test_不認得的_mode_報錯() -> None:
+    with pytest.raises(ValueError, match="sizing"):
+        simulate(_trades(), _closes(A=[100] * 6), capital=1, sizing="half")  # type: ignore[arg-type]

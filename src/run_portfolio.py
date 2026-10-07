@@ -1,7 +1,7 @@
 """把處置股策略放回日曆:權益曲線、最大回檔、多久沒創新高(#33)。
 
 交易來自 pre_release_run 的頭條樣本(t−6 收盤買、t−1 收盤賣,漲跌停順延)。
-每個訊號買 1 張,錢不夠就跳過;本金分 4 檔。基準是同一段日曆的加權指數
+部位大小三種 mode(lot / fixed / fraction),本金分 4 檔。基準是同一段日曆的加權指數
 買進持有。這是量測,不是檢定:不掃參數,難看就照實寫。
 
 用法:.venv/bin/python -m src.run_portfolio
@@ -19,7 +19,15 @@ from src.adjust import adjusted_closes
 from src.disposition_study import pre_release_run, trading_days
 from src.liquidity import chain_levels
 from src.market import index_series
-from src.portfolio import drawdown, losing_streak, simulate, underwater_days
+from src.portfolio import (
+    SHARE,
+    SIZINGS,
+    Portfolio,
+    drawdown,
+    losing_streak,
+    simulate,
+    underwater_days,
+)
 from src.universe import all_actions, all_prices, all_punishes
 
 
@@ -33,7 +41,7 @@ SECOND = 2
 #: #30 的候選:整串第一次處置前 20 日成交金額中位數 ≥ 200 百萬(W2,#31)
 W2_MIN = 200
 DAYS_PER_YEAR = 365.25
-#: #33 事前登記的連虧門檻(日曆天)。要不要改還在等 Jordan,這裡照實報
+#: #33 原本的連虧門檻(日曆天)。Jordan 2026-10-07 改成「不超過大盤」,這個只列出來參考
 UNDERWATER_LIMIT = 365
 
 
@@ -56,32 +64,43 @@ def _benchmark(index: dict[date, float], days: pd.DatetimeIndex) -> pd.Series:
     return series.reindex(days).ffill().dropna()
 
 
-def touched_by_actions(runs: pd.DataFrame, actions: pd.DataFrame) -> pd.Series:
-    """持有期間(買進日之後、賣出日當天以前)有沒有股本事件。
-
-    報酬已經還原過(#59)。這裡另外標出來,做「整筆拿掉」的敏感度檢查 ——
-    還原因子本身有沒有漏(像 5314 那樣)會在這裡現形。
-    """
-    by_code: dict[str, list[pd.Timestamp]] = {}
-    for code, day in zip(actions.code.astype(str), actions.day, strict=True):
-        by_code.setdefault(code, []).append(pd.Timestamp(day))
-    flags = [
-        any(pd.Timestamp(b) < d <= pd.Timestamp(e) for d in by_code.get(str(c), []))
-        for c, b, e in zip(runs.code, runs.buy_day, runs.sell_day, strict=True)
-    ]
-    return pd.Series(flags, index=runs.index)
+def _row(label: str, out: Portfolio, bench_dd: float, bench_under: int) -> str:
+    """一個 mode × 本金的結果,加上三條判準(#33)。365 天只列出來參考。"""
+    eq = out.equity
+    dd = drawdown(eq)
+    under = underwater_days(eq)
+    span = (eq.index[-1] - eq.index[0]).days
+    total = eq.iloc[-1] / eq.iloc[0] - 1
+    annual = (1 + total) ** (DAYS_PER_YEAR / span) - 1 if span else 0.0
+    ok = "".join(
+        "✅" if passed else "❌"
+        for passed in (
+            dd.pct >= bench_dd,
+            under <= bench_under,
+            eq.iloc[-1] > out.capital,
+        )
+    )
+    ref = "≤365" if under <= UNDERWATER_LIMIT else ">365"
+    return (
+        f"  {label:<16} 年化 {annual * 100:+6.1f}%  MDD {dd.pct:6.1f}%"
+        f"  沒創新高 {under:>4} 天({ref})  成交 {out.taken:>4} / 跳過 {out.skipped:>4}"
+        f"  同時 {out.max_concurrent:>3} 檔  連虧 {losing_streak(out.pnls):>2}  {ok}"
+    )
 
 
 def main() -> int:
-    """兩組樣本 × 四檔本金,加上大盤基準。"""
+    """三組樣本 × 三種部位大小 × 四檔本金,加上大盤基準。"""
     cli.no_args(__doc__)
     prices = all_prices()
     punishes = all_punishes()
     index = index_series(RAW / "prices")
-    numbered = punishes[punishes.nth > 0]
     actions = all_actions()
     raw = pre_release_run(
-        numbered, prices, index, all_punishes=punishes, actions=actions
+        punishes[punishes.nth > 0],
+        prices,
+        index,
+        all_punishes=punishes,
+        actions=actions,
     )
     runs = raw[raw.knowable & raw.truly_released & raw.excess.notna()]
     # 市值用還原收盤:除息那天淨值不會憑空掉一截、減資不會憑空漲一截(#59)
@@ -96,10 +115,14 @@ def main() -> int:
     days = pd.DatetimeIndex(closes.index)
 
     bench = _benchmark(index, days)
-    bench_dd = drawdown(bench)
+    bench_dd = drawdown(bench).pct
     bench_under = underwater_days(bench)
     print(f"期間 {days[0]:%Y-%m-%d} ~ {days[-1]:%Y-%m-%d}({len(days)} 個交易日)")
-    print("每個訊號買 1 張,錢不夠就跳過;來回成本 0.585% 在賣出時扣\n")
+    print("來回成本 0.585% 在賣出時扣;報酬與市值都已還原除權息(#59)")
+    print(
+        f"部位大小:lot = 每筆 1 張;fixed = 本金 {SHARE:.0%};fraction = 前一天淨值 {SHARE:.0%}"
+    )
+    print("判準(#33):MDD ≤ 大盤、最長沒創新高 ≤ 大盤、複利為正\n")
     print(_line("加權指數", bench, "(買進持有)"))
 
     levels = chain_levels(punishes, prices, trading_days(prices))
@@ -113,48 +136,23 @@ def main() -> int:
             for c, st in zip(runs.code, runs.start, strict=True)
         ]
     ]
-    touched = (
-        touched_by_actions(runs, actions)
-        if actions is not None
-        else pd.Series(False, index=runs.index)
-    )
-    clean = runs[~touched]
-    print(
-        f"持有期間遇到股本事件的交易 {int(touched.sum())} 筆:報酬已還原(#59),"
-        "敏感度檢查再把它們整筆拿掉看結論變不變"
-    )
     samples = (
         ("全部", runs),
         ("第二次處置", runs[runs.nth == SECOND]),
         ("第二次 × W2≥200M(#30)", liquid[liquid.nth == SECOND]),
-        ("全部,排除股本事件", clean),
-        ("第二次,排除股本事件", clean[clean.nth == SECOND]),
     )
     for label, sample in samples:
-        trades = sample[["code", "buy_day", "sell_day", "buy", "sell"]].assign(
+        # gross 一定要帶進去:那是還原過的報酬,沒有它就會退回原始的賣價 ÷ 買價
+        trades = sample[["code", "buy_day", "sell_day", "buy", "sell", "gross"]].assign(
             code=sample.code.astype(str)
         )
         print(f"\n{label}:訊號 {len(trades)} 筆(統計樣本 = 可交易訊號,重疊的都留著)")
-        for capital in CAPITALS:
-            out = simulate(trades, closes[sorted(set(trades.code))], capital)
-            under = underwater_days(out.equity)
-            dd = drawdown(out.equity)
-            ok = [
-                "MDD≤大盤 " + ("✅" if dd.pct >= bench_dd.pct else "❌"),
-                f"沒創新高≤{UNDERWATER_LIMIT}天 "
-                + ("✅" if under <= UNDERWATER_LIMIT else "❌"),
-                "≤大盤 " + ("✅" if under <= bench_under else "❌"),
-                "複利為正 " + ("✅" if out.equity.iloc[-1] > capital else "❌"),
-            ]
-            print(
-                _line(
-                    f"{capital / 10_000:,.0f} 萬",
-                    out.equity,
-                    f"  成交 {out.taken} / 跳過 {out.skipped}、同時最多 {out.max_concurrent} 檔"
-                    f"、最長連虧 {losing_streak(out.pnls)} 筆",
-                )
-            )
-            print(f"  {'':<10} {'  '.join(ok)}")
+        marks_needed = closes[sorted(set(trades.code))]
+        for sizing in SIZINGS:
+            for capital in CAPITALS:
+                out = simulate(trades, marks_needed, capital, sizing=sizing)
+                name = f"{sizing} {capital / 10_000:,.0f} 萬"
+                print(_row(name, out, bench_dd, bench_under))
     return 0
 
 
