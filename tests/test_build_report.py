@@ -1,6 +1,8 @@
 import pandas as pd
+import pytest
 
 from src.build_report import _projected_days, _shift, _status
+from src.market import ROUND_TRIP_COST_PCT
 
 
 DAYS = pd.DatetimeIndex(
@@ -8,6 +10,12 @@ DAYS = pd.DatetimeIndex(
         ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"]
     )
 )
+
+#: _current 從價格表取最後一個交易日、算模擬進出場。兩檔每天都收 100
+PRICES = pd.concat(
+    pd.DataFrame({"day": DAYS, "code": code, "close": 100.0})
+    for code in ("1111", "2222")
+).assign(open=100.0, high=100.0, low=100.0)
 
 
 class TestProjectedDays:
@@ -124,9 +132,9 @@ class TestCurrent:
             self.punishes,
             self.runs,
             seq,
-            DAYS.max(),
             pd.Timestamp(today),
             self.market_of,
+            PRICES,
         )
 
     def test_只列出還沒出關的(self):
@@ -187,9 +195,9 @@ class TestCurrentByMarket:
             self.punishes,
             self.runs,
             _projected_days(DAYS),
-            DAYS.max(),
             pd.Timestamp("2026-09-18"),
             self.market_of,
+            PRICES,
         )
 
     def test_每一檔用自己市場的統計(self):
@@ -216,9 +224,9 @@ class TestCurrentByMarket:
             self.punishes,
             thin,
             _projected_days(DAYS),
-            DAYS.max(),
             pd.Timestamp("2026-09-18"),
             self.market_of,
+            PRICES,
         )
         # 上櫃一筆同類都沒有 -> 退回混合,而且要講出來
         otc = next(row for row in got if row["code"] == 2222)
@@ -232,9 +240,9 @@ class TestCurrentByMarket:
             odd,
             self.runs,
             _projected_days(DAYS),
-            DAYS.max(),
             pd.Timestamp("2026-09-18"),
             self.market_of,
+            PRICES,
         )
         # 它不在研究樣本裡,掛第一次處置的統計會誤導
         assert [row["code"] for row in got] == [2222]
@@ -266,3 +274,63 @@ class TestBinomial:
         from src.build_report import _binomial
 
         assert _binomial([]) is None
+
+
+class TestTrade:
+    """卡片上的模擬進出場,跟回測同一套漲跌停順延規則(#44、#45)。"""
+
+    days = pd.bdate_range("2026-02-02", periods=6)
+
+    def _close(self, closes: list[float | None]) -> pd.DataFrame:
+        return pd.DataFrame({"1111": closes}, index=self.days)
+
+    def _trade(self, closes, buy: int, sell: int, *, last: int | None = None):
+        from src.build_report import _trade
+
+        days = self.days if last is None else self.days[: last + 1]
+        close = self._close(closes).loc[days]
+        return _trade("1111", self.days[buy], self.days[sell], days, close)
+
+    def test_還沒到買點只有收盤價(self):
+        got = self._trade([100, 101, 102, 103, 104, 105], buy=4, sell=5, last=2)
+        assert (got["close"], got["closeDay"]) == (102, "2026-02-04")
+        assert got["entryPrice"] is None
+        assert got["tradeState"] == "尚未到買點"
+
+    def test_持有中用最新收盤算未實現報酬(self):
+        got = self._trade([100, 100, 110, 121, 121, 121], buy=1, sell=5, last=3)
+        assert got["entryPrice"] == 100
+        assert got["tradeState"] == "持有中"
+        assert got["tradeReturn"] == pytest.approx(21 - ROUND_TRIP_COST_PCT, abs=0.01)
+
+    def test_已賣出用出場價算實現報酬(self):
+        got = self._trade([100, 100, 105, 105, 110, 200], buy=1, sell=4)
+        assert (got["exitPrice"], got["exitDay"]) == (110, "2026-02-06")
+        assert got["tradeState"] == "已賣出"
+        assert got["tradeReturn"] == pytest.approx(10 - ROUND_TRIP_COST_PCT, abs=0.01)
+
+    def test_買進日漲停順延(self):
+        got = self._trade([100, 110, 112, 112, 112, 112], buy=1, sell=4)
+        assert (got["entryDay"], got["entryDeferred"]) == ("2026-02-04", 1)
+
+    def test_賣出日跌停順延到最新一天還賣不掉(self):
+        got = self._trade([100, 100, 100, 90, 81, 72.9], buy=1, sell=3)
+        assert got["exitPrice"] is None
+        assert got["tradeState"] == "跌停賣不掉,順延中"
+        # 還沒賣掉,所以報酬用最新收盤算
+        assert got["tradeReturn"] == pytest.approx(
+            -27.1 - ROUND_TRIP_COST_PCT, abs=0.01
+        )
+
+    def test_漲停一路到賣出日都買不到(self):
+        got = self._trade([100, 110, 121, 133, 140, 140], buy=1, sell=3)
+        assert got["entryPrice"] is None
+        assert got["tradeState"] == "漲停買不到,沒進場"
+
+    def test_沒有這一檔的價格(self):
+        from src.build_report import _trade
+
+        got = _trade(
+            "9999", self.days[1], self.days[3], self.days, self._close([1] * 6)
+        )
+        assert got["close"] is None

@@ -61,17 +61,31 @@ def latest_snapshots(archive: Path = ARCHIVE) -> list[Path]:
     return sorted(archive.glob("dispersion_*.csv"), reverse=True)[:2]
 
 
+#: 最近這麼多個交易日都沒有成交,就當成停牌、不列出來(#47)。
+#: 亞獅康收盤停在 08-24、衡平停在 11-17,卻排在大戶持股前 10 名
+STALE_DAYS = 5
+
+
 def last_two_closes(prices: pd.DataFrame) -> dict[str, dict[str, Any]]:
     """每一檔最近兩個交易日的收盤,算出漲跌幅。
 
-    用每一檔**自己的**最後兩天,而不是全市場的最後一天 —— 停牌的股票
-    最後一筆可能在幾天前,硬用全市場日期的話它會整列消失。
+    用每一檔**自己的**最後兩天,而不是全市場的最後一天 —— 停牌一兩天的股票
+    最後一筆可能在幾天前,硬用全市場日期的話它會整列消失。但停太久的
+    (最近 STALE_DAYS 個交易日都沒成交)就不列了:它的收盤價和成交量都是
+    很久以前的,放在排行裡會讓人以為它最近還在交易。
+
+    成交張數只算全市場最新那一天,那天沒成交就是 0。
     """
     out: dict[str, dict[str, Any]] = {}
     if prices.empty:
         return out
+    calendar = sorted(prices["day"].unique())
+    latest = calendar[-1]
+    cutoff = calendar[-STALE_DAYS] if len(calendar) >= STALE_DAYS else calendar[0]
     tail = prices.dropna(subset=["close"]).sort_values("day").groupby("code").tail(2)
     for code, rows in tail.groupby("code"):
+        if rows.iloc[-1]["day"] < cutoff:
+            continue
         last = rows.iloc[-1]
         prev = rows.iloc[-2] if len(rows) > 1 else None
         change = None
@@ -84,8 +98,10 @@ def last_two_closes(prices: pd.DataFrame) -> dict[str, dict[str, Any]]:
             "day": last["day"].date().isoformat(),
             "close": float(last["close"]),
             "change": change,
-            # 成交股數換成張,台股習慣看張
-            "lots": None if pd.isna(volume) else round(volume / 1000),
+            # 成交股數換成張,台股習慣看張。最新那天沒成交就是 0
+            "lots": 0
+            if last["day"] != latest
+            else (None if pd.isna(volume) else round(volume / 1000)),
         }
     return out
 

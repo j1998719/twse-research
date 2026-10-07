@@ -2,6 +2,7 @@
 
 import { drawMonthly, drawPath } from "./charts.ts";
 import { pct, pValue, sign, thousands } from "./format.ts";
+import { EXTERNAL, yahooQuote } from "./links.ts";
 import type {
 	CapitalRow,
 	Current,
@@ -88,21 +89,38 @@ function marketBreakdown(
 	return parts.join(" · ") || "—";
 }
 
+/** 價格與日期;順延過就標出來 */
+function priced(
+	price: number | null,
+	day: string | null,
+	deferred = 0,
+): string {
+	if (price === null || day === null) return "—";
+	const note =
+		deferred > 0 ? ` <small class="qual">順延 ${deferred} 天</small>` : "";
+	return `${price.toFixed(2)} <small class="qual">${day.slice(5)}</small>${note}`;
+}
+
 function card(item: Current): string {
 	const second = item.measure === "第二次處置";
 	const state = STATE_CLASS[item.status] ?? "wait";
+	const realized = item.tradeState === "已賣出";
 	return `
  <article class="cell ${second ? "second" : ""}">
-  <div class="cell-top"><span class="code num">${item.code}</span>
-   <span class="nm">${item.name}</span>
+  <div class="cell-top"><a class="quote" href="${yahooQuote(item.code, item.market)}" ${EXTERNAL} title="在 Yahoo 股市打開"><span class="code num">${item.code}</span>
+   <span class="nm">${item.name}</span></a>
    <span class="tag">${second ? "全額預收" : "第一次"}</span></div>
   <div class="why">${item.condition}<br>${item.start} – ${item.end}</div>
   <div class="countdown"><span class="big num">${item.daysLeft}</span>
    <small>天後出關(${item.release})</small></div>
   <div class="plan">
    <dl>
+    <dt>收盤</dt><dd>${priced(item.close, item.closeDay)}</dd>
     <dt>參考買點 t−6</dt><dd>${item.buyDay}</dd>
+    <dt>模擬進場</dt><dd>${priced(item.entryPrice, item.entryDay, item.entryDeferred)}</dd>
     <dt>參考賣點 t−1</dt><dd>${item.sellDay}</dd>
+    <dt>模擬出場</dt><dd>${priced(item.exitPrice, item.exitDay, item.exitDeferred)}</dd>
+    <dt>${realized ? "實現報酬" : "目前報酬"}<small class="qual">扣成本</small></dt><dd class="num ${sign(item.tradeReturn)}">${pct(item.tradeReturn)} <small class="qual">${item.tradeState}</small></dd>
     <dt>歷史同類</dt><dd>${item.histN} 筆</dd>
     <dt>中位數 / 勝率</dt><dd>${pct(item.histMedian)} / ${item.histWin}%</dd>
     <dt>期望值</dt><dd class="ev">${pct(item.histEV)}</dd>

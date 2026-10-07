@@ -636,3 +636,24 @@ footer {
 	outline: 2px solid var(--brass);
 	outline-offset: 2px;
 }
+
+/* 連到 Yahoo 股市的股票名稱(#44、#46):看起來像文字,滑過才出現底線 */
+a.quote {
+	color: inherit;
+	text-decoration: none;
+}
+a.quote:hover .nm,
+a.quote:hover b,
+a.quote:focus-visible {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+a.quote:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 2px;
+}
+/* 表格裡整格都可以點,手機上才好按 */
+.rank-table a.quote {
+	display: block;
+	padding-block: 4px;
+}

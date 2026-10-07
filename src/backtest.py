@@ -346,7 +346,7 @@ def _pos(days: pd.DatetimeIndex, day: pd.Timestamp) -> int:
 
 
 @dataclass(frozen=True)
-class _Book:
+class Book:
     """判斷某天成交得了成交不了要用的價格:成交價那一張表,以及收盤(算漲跌停)。"""
 
     days: pd.DatetimeIndex
@@ -354,8 +354,8 @@ class _Book:
     close: pd.DataFrame
 
 
-def _tradable_from(
-    book: _Book,
+def tradable_from(
+    book: Book,
     code: object,
     start: pd.Timestamp,
     until: pd.Timestamp | None,
@@ -456,11 +456,11 @@ def pre_release_run(
         planned_buy, planned_sell = buy_day, sell_day
         if timing.defer_limits:
             # 先找賣出日,再找買進日 —— 買進最晚只能順延到原定賣出日的前一天
-            sell_found = _tradable_from(
-                _Book(days, sell_px, close_px), code, sell_day, None, buying=False
+            sell_found = tradable_from(
+                Book(days, sell_px, close_px), code, sell_day, None, buying=False
             )
-            buy_found = _tradable_from(
-                _Book(days, buy_px, close_px), code, buy_day, sell_day, buying=True
+            buy_found = tradable_from(
+                Book(days, buy_px, close_px), code, buy_day, sell_day, buying=True
             )
             if sell_found is None or buy_found is None:
                 unfilled += 1

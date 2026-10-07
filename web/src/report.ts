@@ -64,6 +64,20 @@ export interface Current {
 	histWinAvg: number;
 	histLossAvg: number;
 	histWorst: number;
+	/** 最新收盤價與日期(#44) */
+	close: number | null;
+	closeDay: string | null;
+	/** 照 t−6 買、t−1 賣實際做的話:進出場價、日期、因漲跌停順延了幾天(#45) */
+	entryPrice: number | null;
+	entryDay: string | null;
+	entryDeferred: number;
+	exitPrice: number | null;
+	exitDay: string | null;
+	exitDeferred: number;
+	/** 這一檔扣掉來回成本的報酬 %(不扣大盤)。還沒賣出就是用最新收盤算的 */
+	tradeReturn: number | null;
+	/** 尚未到買點 / 持有中 / 已賣出 / 漲停買不到… / 跌停賣不掉… */
+	tradeState: string;
 }
 
 export interface Period {

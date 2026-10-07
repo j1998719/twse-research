@@ -17,16 +17,20 @@ from scipy import stats
 
 from src.backtest import (
     PRE_RELEASE_ENTRY,
+    Book,
     Timing,
+    as_number,
+    build_panels,
     event_rate,
     exit_returns,
     pre_release_run,
     summarise,
+    tradable_from,
     trading_days,
     win_loss,
 )
 from src.capital import capital_run
-from src.market import index_series
+from src.market import ROUND_TRIP_COST_PCT, index_series
 from src.regime import MARKET_REGIMES, slice_by
 from src.universe import all_prices, all_punishes
 
@@ -85,13 +89,80 @@ def _status(today: pd.Timestamp, buy: pd.Timestamp, sell: pd.Timestamp) -> str:
     return "尚未到買點"
 
 
+def _trade(
+    code: str,
+    buy: pd.Timestamp,
+    sell: pd.Timestamp,
+    days: pd.DatetimeIndex,
+    close: pd.DataFrame,
+) -> dict[str, Any]:
+    """這一檔照「t−6 收盤買、t−1 收盤賣」實際做會怎樣,用跟回測一樣的順延規則(#45)。
+
+    還沒到的日子就是 None。還沒賣出時,報酬用最新收盤算(未實現);
+    已經賣出就是實現報酬。報酬都扣掉來回成本,但**不扣大盤** —— 卡片上
+    要看的是這一檔自己賺賠多少,跟歷史統計的「超額」不是同一個數字。
+    """
+    empty: dict[str, Any] = {
+        "close": None,
+        "closeDay": None,
+        "entryPrice": None,
+        "entryDay": None,
+        "entryDeferred": 0,
+        "exitPrice": None,
+        "exitDay": None,
+        "exitDeferred": 0,
+        "tradeReturn": None,
+        "tradeState": "尚未到買點",
+    }
+    if code not in close.columns:
+        return empty
+    series = close[code].dropna()
+    if series.empty:
+        return empty
+    last = days.max()
+    out = dict(empty)
+    out["close"] = float(series.iloc[-1])
+    out["closeDay"] = str(series.index[-1].date())
+    if buy > last:
+        return out
+    book = Book(days, close, close)
+    entry = tradable_from(book, code, buy, sell, buying=True)
+    if entry is None:
+        # 還沒到賣出日就是還在等;過了賣出日都買不到,這一次就沒有進場
+        out["tradeState"] = "漲停買不到,順延中" if sell > last else "漲停買不到,沒進場"
+        return out
+    entry_px = as_number(close.at[entry, code])
+    if entry_px is None or entry_px <= 0:
+        return out
+    out["entryPrice"] = entry_px
+    out["entryDay"] = str(entry.date())
+    out["entryDeferred"] = int(days.searchsorted(entry) - days.searchsorted(buy))
+    exit_day = (
+        tradable_from(book, code, sell, None, buying=False) if sell <= last else None
+    )
+    if exit_day is None:
+        price = out["close"]
+        out["tradeState"] = "跌停賣不掉,順延中" if sell <= last else "持有中"
+    else:
+        price = as_number(close.at[exit_day, code])
+        out["exitPrice"] = price
+        out["exitDay"] = str(exit_day.date())
+        out["exitDeferred"] = int(days.searchsorted(exit_day) - days.searchsorted(sell))
+        out["tradeState"] = "已賣出"
+    if price is not None:
+        out["tradeReturn"] = round(
+            (price / entry_px - 1) * 100 - ROUND_TRIP_COST_PCT, 2
+        )
+    return out
+
+
 def _current(
     punishes: pd.DataFrame,
     runs: pd.DataFrame,
     seq: list[pd.Timestamp],
-    known_last: pd.Timestamp,
     today: pd.Timestamp,
     market_of: dict[str, str],
+    prices: pd.DataFrame,
 ) -> list[dict[str, Any]]:
     """仍在處置期間的個股,附歷史同類事件的統計。
 
@@ -99,6 +170,9 @@ def _current(
     一張上櫃的卡片上會誤導。同市場的樣本太少時才退回混合,並在欄位標明。
     """
     rows: list[dict[str, Any]] = []
+    days = trading_days(prices)
+    known_last = days.max()
+    close = build_panels(prices)["close"]
     for raw in punishes[punishes.end >= today].sort_values("end").to_dict("records"):
         release = _shift(seq, pd.Timestamp(raw["end"]), 1)
         if release is None:
@@ -148,6 +222,7 @@ def _current(
                 "histWinAvg": split["賺_平均%"],
                 "histLossAvg": split["賠_平均%"],
                 "histWorst": stat["最小%"],
+                **_trade(str(raw["code"]), buy, sell, days, close),
             }
         )
     return rows
@@ -287,7 +362,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
                 "unfilled": int(raw_runs.attrs.get("unfilled", 0)),
             },
         },
-        "current": _current(punishes, runs, seq, days.max(), today, market_of),
+        "current": _current(punishes, runs, seq, today, market_of, prices),
         "headline": summarise(runs, "excess"),
         "winloss": win_loss(runs, "excess"),
         "winlossSecond": win_loss(second, "excess"),

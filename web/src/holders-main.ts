@@ -16,6 +16,7 @@ import {
 	sortBig,
 	sortFlows,
 } from "./holders.ts";
+import { EXTERNAL, yahooQuote } from "./links.ts";
 
 declare const HOLDERS_DATA: unknown;
 
@@ -44,6 +45,11 @@ function escapeHtml(text: string): string {
 	);
 }
 
+/** 股票那一格:代號、名稱、市場,整格連到 Yahoo 股市(#46) */
+function stockCell(r: HolderRow): string {
+	return `<a class="quote" href="${yahooQuote(r.code, r.market)}" ${EXTERNAL}><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></a>`;
+}
+
 /** 週變化是百分點,不是百分比 —— 49% 變 50% 是 +1 個百分點 */
 function points(value: number | null): string {
 	if (value === null) return "—";
@@ -56,7 +62,7 @@ function rowHtml(item: Big, rank: number): string {
 		r.day === latestDay ? "" : ` <small class="qual">${r.day.slice(5)}</small>`;
 	return `<tr>
  <td class="num rank">${rank}</td>
- <td><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></td>
+ <td>${stockCell(r)}</td>
  <td class="num">${r.close.toFixed(2)}${stale}</td>
  <td class="num ${sign(r.change)}">${pct(r.change)}</td>
  <td class="num strong">${item.pct.toFixed(2)}%</td>
@@ -70,7 +76,7 @@ function maRowHtml(r: HolderRow, rank: number): string {
 	const price = (v: number | null): string => (v === null ? "—" : v.toFixed(2));
 	return `<tr>
  <td class="num rank">${rank}</td>
- <td><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></td>
+ <td>${stockCell(r)}</td>
  <td class="num">${r.close.toFixed(2)}</td>
  <td class="num opt">${price(r.ma5y)}</td>
  <td class="num ${sign(r.gap5y)}">${pct(r.gap5y)}</td>
@@ -238,7 +244,7 @@ function flowRowHtml(r: HolderRow, rank: number): string {
 	const total = inst5(r);
 	return `<tr>
  <td class="num rank">${rank}</td>
- <td><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></td>
+ <td>${stockCell(r)}</td>
  <td class="num">${r.close.toFixed(2)}</td>
  <td class="num">${big.toFixed(2)}%</td>
  <td class="num opt ${sign(weekly)}">${points(weekly)}</td>

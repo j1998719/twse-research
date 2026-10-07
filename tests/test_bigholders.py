@@ -175,3 +175,17 @@ def test_換發中只有一個持有人的股票不列() -> None:
     # 2601 益航減資換發期間:全部股票在同一個持有人名下
     reissue = _snapshot("20261002", {"2601": {15: (1, 100.0), 17: (1, 100.0)}})
     assert build(reissue, None, {"2601": QUOTE})["rows"] == []
+
+
+def test_很久沒成交的不列_成交量只算最新一天() -> None:
+    days = [f"2026-09-{d:02d}" for d in (21, 22, 23, 24, 25, 29, 30)]
+    rows = [(d, "2330", 100.0, 5_000_000) for d in days]
+    # 停了兩天:還在 5 個交易日內,要列;但最新一天沒成交,張數是 0
+    rows += [(d, "1101", 40.0, 1_000_000) for d in days[:-2]]
+    # 只有最早那天有成交:超過 5 個交易日,不列
+    rows += [(days[0], "6497", 5.66, 1_872_000)]
+    out = last_two_closes(_prices(rows))
+    assert set(out) == {"2330", "1101"}
+    assert out["2330"]["lots"] == 5000
+    assert out["1101"]["lots"] == 0
+    assert out["1101"]["day"] == "2026-09-25"
