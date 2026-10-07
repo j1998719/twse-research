@@ -15,7 +15,8 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from src import cli
-from src.disposition_study import pre_release_run
+from src.disposition_study import pre_release_run, trading_days
+from src.liquidity import chain_levels
 from src.market import index_series
 from src.portfolio import drawdown, losing_streak, simulate, underwater_days
 from src.universe import all_prices, all_punishes
@@ -30,6 +31,8 @@ ACTIONS = Path("data/out/corporate_actions.csv")
 #: 本金分檔(#33 事前寫下的)
 CAPITALS = (1_000_000, 3_000_000, 10_000_000, 30_000_000)
 SECOND = 2
+#: #30 的候選:整串第一次處置前 20 日成交金額中位數 ≥ 200 百萬(W2,#31)
+W2_MIN = 200
 DAYS_PER_YEAR = 365.25
 #: #33 事前登記的連虧門檻(日曆天)。要不要改還在等 Jordan,這裡照實報
 UNDERWATER_LIMIT = 365
@@ -90,6 +93,17 @@ def main() -> int:
     print("每個訊號買 1 張,錢不夠就跳過;來回成本 0.585% 在賣出時扣\n")
     print(_line("加權指數", bench, "(買進持有)"))
 
+    levels = chain_levels(punishes, prices, trading_days(prices))
+    w2 = {
+        (str(c), pd.Timestamp(st)): v
+        for c, st, v in zip(punishes.code, punishes.start, levels.w2, strict=True)
+    }
+    liquid = runs[
+        [
+            w2.get((str(c), pd.Timestamp(st)), float("nan")) >= W2_MIN
+            for c, st in zip(runs.code, runs.start, strict=True)
+        ]
+    ]
     actions = pd.read_csv(ACTIONS, dtype={"code": str}, parse_dates=["day"])
     touched = touched_by_actions(runs, actions)
     clean = runs[~touched]
@@ -97,6 +111,7 @@ def main() -> int:
     samples = (
         ("全部", runs),
         ("第二次處置", runs[runs.nth == SECOND]),
+        ("第二次 × W2≥200M(#30)", liquid[liquid.nth == SECOND]),
         ("全部,排除股本事件", clean),
         ("第二次,排除股本事件", clean[clean.nth == SECOND]),
     )
