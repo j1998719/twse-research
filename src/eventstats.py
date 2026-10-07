@@ -262,8 +262,10 @@ def window_excess[DayT: SupportsAllComparisons](
     else:
         entry = first_on_or_after(series, entry_day)
         out = first_on_or_after(series, exit_day)
-    # 買進順延到出場日之後:這一筆成交不了。同一天進出照舊算 0%
-    if entry is None or out is None or entry[1] <= 0 or entry[0] > out[0]:
+    # 進場日要早於原定出場日,否則這一筆成交不了(None),不是 0%:漲停一路順延過頭,
+    # 或者那一天還沒上市(順延會把進出場都推到上市第一天,算成 0% 再扣成本 =
+    # 剛好 −0.585%;可轉債的安慰劑有 13.7% 是這種假的觀察值,#62 抓到的)
+    if entry is None or out is None or entry[1] <= 0 or entry[0] >= exit_day:
         return None
     bench = equal_weight_buy_and_hold(closes, entry[0], out[0])
     if bench is None:

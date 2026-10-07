@@ -129,7 +129,8 @@ class Excess:
         else:
             entry = (entry_day, series[entry_day]) if entry_day in series else None
             out = (exit_day, series[exit_day]) if exit_day in series else None
-        if entry is None or out is None or entry[1] <= 0 or entry[0] > out[0]:
+        # 跟 window_excess 同一條:進場日要早於原定出場日,否則算不出來(不是 0%)
+        if entry is None or out is None or entry[1] <= 0 or entry[0] >= exit_day:
             return None
         bench = self.bench(entry[0], out[0])
         if bench is None:

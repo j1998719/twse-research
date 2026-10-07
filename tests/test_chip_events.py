@@ -101,3 +101,21 @@ def test_安慰劑_隨機挑_而且可以重現() -> None:
     assert len(a) == 50
     assert {c for c, _ in a} <= {"A", "B", "C"}
     assert all(d in days for _, d in a)
+
+
+def test_還沒上市的日期_不是報酬為零而是算不出來() -> None:
+    # 安慰劑會抽到還沒上市的日期:順延會把進場和出場都推到上市第一天,算成 0% 再扣成本
+    # = 剛好 −0.585%。可轉債的安慰劑有 13.7% 是這種假的觀察值(#62 抓到的)
+    from datetime import date
+
+    from src.eventstats import window_excess
+    from src.run_chip_signals import Excess
+
+    late = {date(2024, 6, 12): 100.0, date(2024, 6, 13): 101.0}
+    other = {date(2016, 5, d): 50.0 for d in range(2, 30)} | {
+        date(2024, 6, 12): 50.0,
+        date(2024, 6, 13): 50.0,
+    }
+    closes = {"N": late, "O": other}
+    assert Excess(closes)("N", date(2016, 5, 9), date(2016, 6, 6)) is None
+    assert window_excess(late, closes, date(2016, 5, 9), date(2016, 6, 6)) is None
