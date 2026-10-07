@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
+from scipy import stats
 
 from src import cli
 from src.cbboard import link_to_prices, load_boards
@@ -49,8 +50,15 @@ from src.cbstudy import (
     verdict,
 )
 from src.events.cb import Ledger, events, sightings, tally
+from src.eventstats import Observation
+from src.run_chip_signals import (
+    Excess,
+    placebo_hits,
+    scored as placebo_scored,
+    summarize,
+)
 from src.run_wholemarket import closes_by_code
-from src.study import ALPHA, Coverage
+from src.study import ALPHA, Coverage, Window, pooled
 from src.universe import all_actions, all_prices
 
 
@@ -193,6 +201,66 @@ def _conversion_tests(
     return results, coverages
 
 
+def _placebo(
+    label: str, group: Sequence[Event], windows: Sequence[Window], data: Data
+) -> None:
+    """安慰劑基準(診斷,不是新的檢定,不進 BH)。
+
+    #60 的教訓:超額報酬扣了來回成本,而且單檔中位數天生低於全宇集的等權平均
+    (右偏),所以「跟 0 比」的虛無假設其實不在 0。這裡用同一批標的股 × 同一段
+    期間內的隨機交易日,走同一套算法(run_chip_signals 的 Excess / scored /
+    summarize,數字跟 window_excess 一樣),看「沒有訊號」時的水位在哪裡。
+    登記的檢定沒有流動性門檻,所以安慰劑也不設。
+
+    事件的窗口 (進 a, 出 b) 對應 scored 的「事件日 = 進場前一天、持有 b − a 天」。
+    有事件組的話(H3 單樣本)再印一個「事件 vs 安慰劑」的 Mann-Whitney p 當參考。
+    """
+    usable = [s for w in windows for s in score(group, data.days, w, data.closes)]
+    if not usable:
+        return
+    codes = sorted({s.event.code for s in usable} & set(data.closes))
+    lo, hi = min(s.entry for s in usable), max(s.entry for s in usable)
+    days = pd.DatetimeIndex([pd.Timestamp(d) for d in data.days])
+    span = days[(days >= pd.Timestamp(lo)) & (days <= pd.Timestamp(hi))]
+    base = placebo_hits(codes, span)
+    all_days = days
+
+    def anywhere(_code: str, _day: pd.Timestamp) -> bool:
+        return True
+
+    print(
+        f"\n安慰劑(診斷,不是檢定):{label}的標的 {len(codes)} 檔 × {lo}~{hi} 的隨機交易日"
+    )
+    for window in windows:
+        hold = window.exit - window.entry
+        frame = placebo_scored(base, hold, all_days, data.excess, anywhere)
+        s0 = summarize(frame, data.market_of)
+        line_ = (
+            f"  窗口 ({window.entry:+d}, {window.exit:+d}) 持有 {hold} 日:n={s0['n']} "
+            f"中位數 {s0['median']:+.2f}% 勝率 {s0['win']:.1f}% "
+            f"群集 CI [{s0['low']:+.2f},{s0['high']:+.2f}]"
+        )
+        if window in H3_WINDOWS and label == "轉換起日":
+            kept, _ = pooled(
+                [
+                    Observation(s.event.code, s.entry, s.excess, True)
+                    for s in score(group, data.days, window, data.closes)
+                ],
+                horizon(window),
+                data.days,
+            )
+            got = [o.excess for o in kept]
+            p = float(
+                stats.mannwhitneyu(got, frame.excess, alternative="two-sided").pvalue
+            )
+            line_ += (
+                f";事件中位數 − 安慰劑中位數 = "
+                f"{statistics.median(got) - float(frame.excess.median()):+.2f} 個百分點、"
+                f"Mann-Whitney p={p:.4f}"
+            )
+        print(line_)
+
+
 class Data:
     """跑檢定要的所有東西。"""
 
@@ -206,6 +274,11 @@ class Data:
         self.value = traded_value(prices)
         self.days: list[date] = sorted(d.date() for d in prices.day.unique())
         self.universe = len(self.closes)
+        #: 安慰劑用(run_chip_signals):快取等權基準的 window_excess
+        self.excess = Excess(self.closes)
+        self.market_of = {
+            str(c): str(m) for c, m in zip(prices.code, prices.market, strict=True)
+        }
 
 
 def _family(
@@ -291,6 +364,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     for r in results:
         same = (r.effect > 0) - (r.effect < 0) == PREDICTED[r.hypothesis]
         print(f"  {r.name}:方向{'與預測一致' if same else '與預測相反'}")
+    _placebo("賣回", pick(put_all, "formation"), H1_WINDOWS, data)
+    _placebo("轉換起日", pick(conv_all, "formation"), H3_WINDOWS, data)
     judged, which = verdict(results, corrected)
     print(f"\n判定:{judged} {which}")
     if judged == "找到了":
