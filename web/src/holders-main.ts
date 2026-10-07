@@ -430,10 +430,6 @@ function bindFilters(): void {
 		screen.filters.push(newFilter(kind, nextId()));
 		changed();
 	});
-	el("reset").addEventListener("click", () => {
-		screen = { ...defaultScreen(availableWeeks()), query: screen.query };
-		changed();
-	});
 }
 
 function bindControls(): void {
@@ -595,7 +591,9 @@ function main(): void {
 		el("m-prev").textContent = `(比較 ${data.prevDay})`;
 	screen = load();
 	presets = loadPresets();
-	if (presets.length !== SLOTS)
+	// 格數不對、或全部刪光了:補回預設那組。拿掉「恢復預設」之後(#57),
+	// 這是回到預設的唯一路徑
+	if (presets.length !== SLOTS || presets.every((p) => p === null))
 		presets = starterPresets(defaultScreen(availableWeeks()));
 	fillSelects();
 	bindFilters();

@@ -599,13 +599,32 @@ a.quote:focus-visible {
 }
 
 /* 條件積木(#50):一列一個條件,勾選、比較、數值、移除。手機上一樣好按 */
+/* 我的條件模組(#57):上面是存好的組合,下面是這一組的內容 */
+.module {
+	display: grid;
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 10px;
+	min-width: 0;
+}
+/* 要比後面的 .controls .presets(padding: 0)特異度高 */
+.controls .module .presets {
+	padding: 14px 16px;
+	border-bottom: 1.5px solid var(--hair);
+}
+.module-body {
+	display: grid;
+	gap: 16px;
+	padding: 16px;
+	min-width: 0;
+}
 .builder {
 	display: grid;
 	gap: 10px;
-	padding: 14px 16px;
-	background: var(--surface);
-	border: 1.5px solid var(--hair);
-	border-radius: 8px;
+	min-width: 0;
+}
+.controls .add-pick {
+	justify-self: start;
 }
 .builder-head {
 	display: flex;
@@ -643,8 +662,7 @@ a.quote:focus-visible {
 }
 .filters select,
 .filters input[type="number"],
-.builder select,
-.builder .reset {
+.builder select {
 	font: inherit;
 	font-size: 16px;
 	color: var(--ink);
@@ -679,15 +697,10 @@ a.quote:focus-visible {
 	color: var(--up);
 	border-color: var(--up);
 }
-.builder .reset {
-	cursor: pointer;
-	align-self: end;
-}
 .filters input:focus-visible,
 .filters select:focus-visible,
 .filters .remove:focus-visible,
-.builder select:focus-visible,
-.builder .reset:focus-visible {
+.builder select:focus-visible {
 	outline: 2px solid var(--brass);
 	outline-offset: 1px;
 }
