@@ -79,3 +79,10 @@ def test_還原之後才算均線() -> None:
 
 def test_沒有資料回空的() -> None:
     assert long_term(pd.DataFrame()) == {}
+
+
+def test_同一天兩個事件要相乘_不能只取一個() -> None:
+    prices = _prices("2330", [100.0, 50.0])
+    events = _events([("2330", "2026-01-06", 0.5), ("2330", "2026-01-06", 0.5)])
+    out = adjusted_closes(prices, events)
+    assert out["adj_close"].tolist() == pytest.approx([25.0, 50.0])

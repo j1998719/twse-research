@@ -52,8 +52,14 @@ def adjusted_closes(prices: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
         return out
     # 每個事件之後(含)所有事件的因子連乘:某一天的價格要乘的,就是它之後
     # 第一個事件的這個值。用 merge_asof 一次對齊,不要逐檔逐事件掃全表
-    evs = events.sort_values(["code", "day"], ascending=[True, False]).copy()
-    evs["factor"] = evs["factor"].astype(float)
+    # 同一檔同一天有兩個事件(例如除息和減資同一天恢復交易)時先乘起來:
+    # merge_asof 遇到同一天只會對到其中一筆,另一個因子會安靜地不見
+    evs = (
+        events.assign(factor=events["factor"].astype(float))
+        .groupby(["code", "day"], as_index=False)
+        .agg(factor=("factor", "prod"))
+        .sort_values(["code", "day"], ascending=[True, False])
+    )
     evs["multiplier"] = evs.groupby("code")["factor"].cumprod()
     aligned = pd.merge_asof(
         out[["day", "code"]].reset_index().sort_values("day"),
