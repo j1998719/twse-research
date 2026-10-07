@@ -72,6 +72,9 @@ step "抓上櫃行情與處置公告" .venv/bin/python -m src.fetch_tpex 2020-01
 # 之後只抓新的那一天。fetch_actions 有任何一段失敗就不寫檔,保留上一份
 step "抓長期日線" .venv/bin/python -m src.fetch_history 2016-01-01 "$TODAY"
 step "抓除權息、減資、變更面額" .venv/bin/python -m src.fetch_actions 2016-01-01 "$TODAY"
+# 籌碼:融資融券(上市 + 上櫃)、上櫃三大法人。上市三大法人在上面「抓三大法人」
+step "抓融資融券" .venv/bin/python -m src.fetch_margin 2020-01-01 "$TODAY"
+step "抓上櫃三大法人" .venv/bin/python -m src.fetch_otc_chips 2020-01-01 "$TODAY"
 step "算大戶持股" .venv/bin/python -m src.build_bigholders
 step "建置大戶持股頁" npm run build:holders
 

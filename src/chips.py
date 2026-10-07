@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.net import TLS
-from src.prices import to_float
+from src.prices import SATURDAY, to_float
 from src.twse import UA, is_common_stock
 
 
@@ -128,5 +128,80 @@ def fetch_chips(
         cached.write_text("", encoding="utf-8")  # 非交易日,記住別再問
         return None
 
+    cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return payload
+
+
+# --- 上櫃 ---
+#
+# 櫃買的三大法人表有 24 欄,每一類法人都是「買進股數、賣出股數、買賣超股數」
+# 三欄,欄名完全一樣,也沒有分組資訊 —— 只能照位置讀。所以每一列都驗算一次:
+# 外資合計 + 投信 + 自營商合計 必須等於最後的三大法人合計。櫃買哪天調了
+# 欄位順序,這個等式就會壞,直接報錯,而不是安靜地把投信讀成自營商。
+
+OTC_URL = "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
+#: 外資及陸資合計、投信、自營商合計、三大法人合計的「買賣超股數」位置
+OTC_FOREIGN, OTC_TRUST, OTC_DEALER, OTC_TOTAL = 10, 13, 22, 23
+OTC_COLUMNS = 24
+
+
+def parse_otc_chips(payload: dict[str, Any], day: date) -> list[Chips]:
+    """櫃買的三大法人買賣明細。"""
+    tables = payload.get("tables") or []
+    if not tables or not tables[0].get("data"):
+        return []
+    rows: list[Chips] = []
+    for row in tables[0]["data"]:
+        code = str(row[0]).strip()
+        if not is_common_stock(code):
+            continue
+        if len(row) != OTC_COLUMNS:
+            msg = f"上櫃三大法人的欄數變了:{len(row)} 欄"
+            raise ValueError(msg)
+        foreign, trust, dealer, total = (
+            int(to_float(str(row[i])) or 0)
+            for i in (OTC_FOREIGN, OTC_TRUST, OTC_DEALER, OTC_TOTAL)
+        )
+        if foreign + trust + dealer != total:
+            msg = (
+                f"上櫃三大法人的欄位順序變了:{code} {foreign}+{trust}+{dealer}≠{total}"
+            )
+            raise ValueError(msg)
+        rows.append(
+            Chips(
+                day=day,
+                code=code,
+                name=str(row[1]).strip(),
+                foreign=foreign,
+                trust=trust,
+                dealer=dealer,
+            )
+        )
+    return rows
+
+
+def fetch_otc_chips(
+    day: date, cache_dir: Path, *, pause: float = 1.5
+) -> dict[str, Any] | None:
+    """抓一天的上櫃三大法人。沒有資料回 None;只有週末會記成空檔案。"""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"otc_{day:%Y%m%d}.json"
+    if cached.exists():
+        raw = cached.read_text(encoding="utf-8")
+        return json.loads(raw) if raw.strip() else None
+    url = f"{OTC_URL}?type=Daily&sect=EW&date={day:%Y/%m/%d}&response=json"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})  # noqa: S310
+    try:
+        with urllib.request.urlopen(req, timeout=60, context=TLS) as resp:  # noqa: S310
+            payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError):
+        time.sleep(pause * 4)
+        raise
+    time.sleep(pause)
+    tables = payload.get("tables") or []
+    if not tables or not tables[0].get("data"):
+        if day.weekday() >= SATURDAY:
+            cached.write_text("", encoding="utf-8")
+        return None
     cached.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return payload
