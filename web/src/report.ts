@@ -52,6 +52,8 @@ export interface Current {
 	daysLeft: number;
 	release: string;
 	buyDay: string;
+	/** t−6 在處置公告之前(新制 5 個營業日),買點往後推到公告後第一個交易日(#65) */
+	buyLate: boolean;
 	sellDay: string;
 	/** 尚未到買點 / 持有中 / 今天賣出 / 已過賣點 */
 	status: string;

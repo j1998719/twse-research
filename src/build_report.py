@@ -101,6 +101,24 @@ def _shift(
     return seq[target] if 0 <= target < len(seq) else None
 
 
+def earliest_buy(
+    seq: list[pd.Timestamp], release: pd.Timestamp, announced: pd.Timestamp | None
+) -> tuple[pd.Timestamp | None, bool]:
+    """參考買點:出關前第 6 個交易日,但不能早於「公告後第一個交易日」(#65)。
+
+    處置公告是盤後發布的,公告當天收盤時還不知道會被處置。新制(2026-08-10 起)
+    只關 5 個營業日,t−6 幾乎都是公告當天 —— 照 t−6 會是一筆做不到的交易。
+    回傳 (買點, 有沒有因為公告太晚而往後推)。
+    """
+    planned = _shift(seq, release, -6)
+    if planned is None or announced is None or pd.isna(announced):
+        return planned, False
+    first = next((d for d in seq if d > pd.Timestamp(announced)), None)
+    if first is not None and first > planned:
+        return first, True
+    return planned, False
+
+
 def _status(today: pd.Timestamp, buy: pd.Timestamp, sell: pd.Timestamp) -> str:
     if today > sell:
         return "已過賣點"
@@ -203,9 +221,9 @@ def _current(
         release = _shift(seq, pd.Timestamp(raw["end"]), 1)
         if release is None:
             continue
-        buy = _shift(seq, release, -6)
+        buy, late = earliest_buy(seq, release, raw.get("announced"))
         sell = _shift(seq, release, -1)
-        if buy is None or sell is None:
+        if buy is None or sell is None or buy >= sell:
             continue
         # 不編號的措施(人工管制撮合)不在研究樣本裡,不該掛第一次處置的統計
         if raw["measure"] not in NUMBERED_MEASURES:
@@ -238,6 +256,8 @@ def _current(
                 "daysLeft": int((pd.Timestamp(raw["end"]) - today).days) + 1,
                 "release": str(release.date()),
                 "buyDay": str(buy.date()),
+                #: t−6 在公告之前(新制),買點往後推到公告後第一個交易日(#65)
+                "buyLate": late,
                 "sellDay": str(sell.date()),
                 "status": _status(today, buy, sell),
                 "projected": bool(release > known_last),

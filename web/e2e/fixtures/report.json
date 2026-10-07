@@ -123,7 +123,8 @@
 			"tradeReturn": 6.42,
 			"tradeState": "已賣出",
 			"w2": 120,
-			"candidate": false
+			"candidate": false,
+			"buyLate": false
 		},
 		{
 			"code": 4174,
@@ -158,7 +159,8 @@
 			"tradeReturn": 19.9,
 			"tradeState": "持有中",
 			"w2": 120,
-			"candidate": false
+			"candidate": false,
+			"buyLate": false
 		},
 		{
 			"code": 3094,
@@ -193,7 +195,8 @@
 			"tradeReturn": null,
 			"tradeState": "剛進場",
 			"w2": 120,
-			"candidate": false
+			"candidate": false,
+			"buyLate": true
 		},
 		{
 			"code": 2221,
@@ -228,7 +231,8 @@
 			"tradeReturn": null,
 			"tradeState": "尚未到買點",
 			"w2": 120,
-			"candidate": false
+			"candidate": false,
+			"buyLate": false
 		},
 		{
 			"code": 6708,
@@ -263,7 +267,8 @@
 			"tradeReturn": 1.92,
 			"tradeState": "持有中",
 			"w2": 35,
-			"candidate": false
+			"candidate": false,
+			"buyLate": false
 		},
 		{
 			"code": 3055,
@@ -298,7 +303,8 @@
 			"tradeReturn": -10.58,
 			"tradeState": "跌停賣不掉,順延中",
 			"w2": 120,
-			"candidate": false
+			"candidate": false,
+			"buyLate": false
 		},
 		{
 			"code": 8227,
@@ -333,7 +339,8 @@
 			"tradeReturn": 1.08,
 			"tradeState": "持有中",
 			"w2": 450,
-			"candidate": true
+			"candidate": true,
+			"buyLate": false
 		}
 	],
 	"headline": {

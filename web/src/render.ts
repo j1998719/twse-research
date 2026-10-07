@@ -116,7 +116,7 @@ function card(item: Current): string {
   <div class="plan">
    <dl>
     <dt>收盤</dt><dd>${priced(item.close, item.closeDay)}</dd>
-    <dt>參考買點 t−6</dt><dd>${item.buyDay}</dd>
+    <dt>${item.buyLate ? '參考買點<small class="qual">公告後最早</small>' : "參考買點 t−6"}</dt><dd>${item.buyDay}</dd>
     <dt>模擬進場</dt><dd>${priced(item.entryPrice, item.entryDay, item.entryDeferred)}</dd>
     <dt>參考賣點 t−1</dt><dd>${item.sellDay}</dd>
     <dt>模擬出場</dt><dd>${priced(item.exitPrice, item.exitDay, item.exitDeferred)}</dd>

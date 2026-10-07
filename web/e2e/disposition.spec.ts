@@ -159,3 +159,11 @@ test("目前處置中符合條件的卡片標「候選」", async ({ page }) => 
 	await expect(card(page, "8227")).toContainText("流動性 4.5 億");
 	await expect(card(page, "4174").locator(".tag.cand")).toHaveCount(0);
 });
+
+test("新制 t−6 在公告前:買點標成「公告後最早」,不假裝是 t−6(#65)", async ({
+	page,
+}) => {
+	await expect(card(page, "3094")).toContainText("公告後最早");
+	await expect(card(page, "3094")).not.toContainText("參考買點 t−6");
+	await expect(card(page, "4174")).toContainText("參考買點 t−6");
+});

@@ -371,3 +371,17 @@ def test_大盤報酬只算研究期間_不是整個指數快取() -> None:
     }
     days = pd.DatetimeIndex(pd.to_datetime(["2020-01-02", "2026-10-06"]))
     assert market_return(index, days) == pytest.approx(300.0)
+
+
+def test_新制_t減6在公告之前_買點往後推到公告後第一個交易日() -> None:
+    # 新制處置只有 5 個營業日,公告在開始前一天盤後:t−6 就是公告當天,那時還不知道(#65)
+    from src.build_report import earliest_buy
+
+    seq = list(pd.bdate_range("2026-10-01", periods=15))
+    release = seq[8]
+    announced = seq[2]  # t−6 = seq[2] 就是公告日 → 收盤時公告還沒出來
+    assert earliest_buy(seq, release, announced) == (seq[3], True)
+    # 舊制:公告比 t−6 早很多,照原定 t−6
+    assert earliest_buy(seq, release, seq[0]) == (seq[2], False)
+    # 沒有公告日就照原定
+    assert earliest_buy(seq, release, None) == (seq[2], False)
