@@ -10,12 +10,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from src import cli
-from src.adjust import adjusted_closes
 from src.disposition_study import pre_release_run, trading_days
 from src.liquidity import chain_levels
 from src.market import index_series
@@ -23,16 +21,16 @@ from src.portfolio import (
     SHARE,
     SIZINGS,
     Portfolio,
+    adjusted_marks,
+    annualised,
     drawdown,
+    index_curve,
     losing_streak,
     simulate,
     underwater_days,
 )
 from src.universe import all_actions, all_prices, all_punishes
 
-
-if TYPE_CHECKING:
-    from datetime import date
 
 RAW = Path("data/raw")
 #: 本金分檔(#33 事前寫下的)
@@ -56,12 +54,6 @@ def _line(label: str, equity: pd.Series, extra: str = "") -> str:
         f"  MDD {dd.pct:6.1f}%({dd.peak:%Y-%m-%d} → {dd.trough:%Y-%m-%d},{back})"
         f"  最長沒創新高 {underwater_days(equity):>4} 天{extra}"
     )
-
-
-def _benchmark(index: dict[date, float], days: pd.DatetimeIndex) -> pd.Series:
-    """同一段日曆的加權指數。缺的日子用前一天。"""
-    series = pd.Series({pd.Timestamp(k): v for k, v in index.items()}).sort_index()
-    return series.reindex(days).ffill().dropna()
 
 
 def _row(label: str, out: Portfolio, bench_dd: float, bench_under: int) -> str:
@@ -88,20 +80,10 @@ def _row(label: str, out: Portfolio, bench_dd: float, bench_under: int) -> str:
     )
 
 
-def _annual(out: Portfolio) -> float:
-    eq = out.equity
-    span = (eq.index[-1] - eq.index[0]).days
-    return (
-        ((eq.iloc[-1] / eq.iloc[0]) ** (DAYS_PER_YEAR / span) - 1) * 100
-        if span
-        else 0.0
-    )
-
-
 def _cost(real: Portfolio, free: Portfolio) -> str:
     """全額預收的代價:跟「賣掉的錢當天就能用」比,少賺多少、多跳過幾筆(#30)。"""
     return (
-        f"└ 全額預收的代價:年化 {_annual(real) - _annual(free):+.1f} 個百分點、"
+        f"└ 全額預收的代價:年化 {annualised(real.equity) - annualised(free.equity):+.1f} 個百分點、"
         f"MDD {drawdown(real.equity).pct - drawdown(free.equity).pct:+.1f}、"
         f"多跳過 {real.skipped - free.skipped} 筆"
     )
@@ -123,17 +105,10 @@ def main() -> int:
     )
     runs = raw[raw.knowable & raw.truly_released & raw.excess.notna()]
     # 市值用還原收盤:除息那天淨值不會憑空掉一截、減資不會憑空漲一截(#59)
-    marks = prices[["code", "day", "close"]].assign(code=prices.code.astype(str))
-    if actions is not None:
-        marks = (
-            adjusted_closes(marks, actions)
-            .drop(columns="close")
-            .rename(columns={"adj_close": "close"})
-        )
-    closes = marks.pivot_table(index="day", columns="code", values="close")
+    closes = adjusted_marks(prices, actions)
     days = pd.DatetimeIndex(closes.index)
 
-    bench = _benchmark(index, days)
+    bench = index_curve(index, days)
     bench_dd = drawdown(bench).pct
     bench_under = underwater_days(bench)
     print(f"期間 {days[0]:%Y-%m-%d} ~ {days[-1]:%Y-%m-%d}({len(days)} 個交易日)")

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,10 @@ from src.disposition_study import (
     trading_days,
     win_loss,
 )
+from src.eventstats import clustered_ci
+from src.liquidity import chain_levels
 from src.market import ROUND_TRIP_COST_PCT, index_series
+from src.portfolio import Sizing, adjusted_marks, index_curve, simulate, summary
 from src.regime import MARKET_REGIMES, slice_by
 from src.universe import all_actions, all_prices, all_punishes
 
@@ -47,6 +51,16 @@ CAPITAL_LEVELS: tuple[float | None, ...] = (None, 5_000_000, 1_000_000, 500_000)
 PATH_RANGE = range(-6, 6)
 MIN_SAMPLES = 3
 SECOND = 2
+#: #30 的候選門檻:整串第一次處置前 20 日成交金額中位數(百萬元)
+CANDIDATE_W2 = 200
+#: 網頁上組合回測用的本金。fixed / fraction 跟本金無關,只有 lot 受影響
+CANDIDATE_CAPITAL = 1_000_000
+#: 組合回測的三種部位大小(#33)和網頁上的說法
+SIZING_LABELS: tuple[tuple[Sizing, str], ...] = (
+    ("lot", "每筆 1 張"),
+    ("fixed", "每筆本金 10%"),
+    ("fraction", "每筆淨值 10%"),
+)
 #: 有編號的處置措施。人工管制撮合之類的不在研究樣本裡,不該掛上它的統計
 NUMBERED_MEASURES = ("第一次處置", "第二次處置")
 #: 未來交易日用平日推算,往後推這麼多天夠用
@@ -240,6 +254,91 @@ def _current(
     return rows
 
 
+def _flag(
+    card: dict[str, Any], w2_of: dict[tuple[str, pd.Timestamp], float]
+) -> dict[str, Any]:
+    """卡片加上候選標記:W2(百萬元,算不出來是 null)以及符不符合 #30 的條件。
+
+    W2 = 整串第一次處置前 20 日的成交金額中位數(#31)。第二次處置而且
+    W2 ≥ CANDIDATE_W2 的才是候選。
+    """
+    w2 = w2_of.get((str(card["code"]), pd.Timestamp(card["start"])))
+    if w2 is None or math.isnan(w2):
+        return {**card, "w2": None, "candidate": False}
+    second = card["measure"] == "第二次處置"
+    return {**card, "w2": round(w2), "candidate": second and w2 >= CANDIDATE_W2}
+
+
+def _stat_row(label: str, sample: pd.DataFrame) -> dict[str, Any]:
+    """一組樣本的筆數、中位數、勝率、按月群集拔靴 95% CI。"""
+    values = sample.excess.astype(float)
+    months = [f"{pd.Timestamp(d):%Y-%m}" for d in sample.buy_day]
+    low, high, _ = clustered_ci(values.tolist(), months)
+    return {
+        "label": label,
+        "n": len(values),
+        "median": round(float(values.median()), 2),
+        "win": round(float((values > 0).mean() * 100), 1),
+        "low": round(low, 2),
+        "high": round(high, 2),
+    }
+
+
+def _candidate(
+    runs: pd.DataFrame,
+    w2_of: dict[tuple[str, pd.Timestamp], float],
+    prices: pd.DataFrame,
+    index: dict[date, float],
+    actions: pd.DataFrame | None,
+) -> dict[str, Any]:
+    """#30 的候選:第二次處置 × 整串第一次處置前 20 日成交金額中位數 ≥ 2 億。
+
+    還沒驗證(門檻是看過資料才定的、滑價還沒實測)。網頁上一定要跟警語一起出現。
+    報酬跟網頁其他地方同一套:漲跌停順延、還原除權息、扣加權指數。
+    """
+    w2 = pd.Series(
+        [
+            w2_of.get((str(c), pd.Timestamp(st)), float("nan"))
+            for c, st in zip(runs.code, runs.start, strict=True)
+        ],
+        index=runs.index,
+    )
+    second = runs[runs.nth == SECOND]
+    picked = second[w2.loc[second.index] >= CANDIDATE_W2]
+    days = trading_days(prices)
+    marks = adjusted_marks(prices, actions)
+    trades = picked[["code", "buy_day", "sell_day", "buy", "sell", "gross"]].assign(
+        code=picked.code.astype(str), prepay=True
+    )
+    portfolio = [
+        {
+            "label": label,
+            **summary(
+                simulate(
+                    trades,
+                    marks[sorted(set(trades.code))],
+                    CANDIDATE_CAPITAL,
+                    sizing=mode,
+                ).equity
+            ),
+        }
+        for mode, label in SIZING_LABELS
+    ]
+    portfolio.append({"label": "加權指數買進持有", **summary(index_curve(index, days))})
+    months = (days.max() - days.min()).days / 30.44
+    return {
+        "minW2": CANDIDATE_W2,
+        "capital": CANDIDATE_CAPITAL,
+        "perMonth": round(len(picked) / months, 1) if months else 0.0,
+        "rows": [
+            _stat_row("全部處置", runs),
+            _stat_row("第二次處置", second),
+            _stat_row("第二次 × 流動性 ≥ 2 億", picked),
+        ],
+        "portfolio": portfolio,
+    }
+
+
 def _offenders(numbered: pd.DataFrame, limit: int = 12) -> list[dict[str, Any]]:
     """反覆被處置的個股,依次數排序。"""
     rows: list[dict[str, Any]] = []
@@ -287,6 +386,12 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
     numbered = punishes[punishes.nth > 0]
 
     actions = all_actions()
+    # 每一筆處置的 W2(#30、#31):整串第一次處置前的流動性水位
+    levels = chain_levels(punishes, prices, days)
+    w2_of = {
+        (str(c), pd.Timestamp(st)): float(v)
+        for c, st, v in zip(punishes.code, punishes.start, levels.w2, strict=True)
+    }
     raw_runs = pre_release_run(
         numbered, prices, index, all_punishes=punishes, actions=actions
     )
@@ -395,7 +500,11 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
                 "unfilled": int(raw_runs.attrs.get("unfilled", 0)),
             },
         },
-        "current": _current(punishes, runs, seq, today, market_of, prices),
+        "current": [
+            _flag(card, w2_of)
+            for card in _current(punishes, runs, seq, today, market_of, prices)
+        ],
+        "candidate": _candidate(runs, w2_of, prices, index, actions),
         "headline": summarise(runs, "excess"),
         "winloss": win_loss(runs, "excess"),
         "winlossSecond": win_loss(second, "excess"),

@@ -41,6 +41,33 @@
   </div>
  </section>
 
+ <!-- #30:Jordan 2026-10-07 要放上網頁。警語不能拿掉:門檻是看過資料才定的 -->
+ <section id="candidate">
+  <h2>研究中的候選:第二次處置 × 流動性</h2>
+  <div class="warn" role="note"><strong>還沒驗證,不是建議。</strong>「2 億」這個門檻是看過同一批資料之後才找到的,數字很可能高估;要用之後的新資料往前驗證(累積約 60 筆)才算數。滑價也還沒實測。卡片上的「候選」只是標出符合條件的股票。</div>
+  <p class="lede">四個條件同時成立:</p>
+  <ol class="conds">
+   <li><strong>第二次處置</strong> —— 公告上寫的,公告當下就知道</li>
+   <li><strong>流動性夠</strong> —— 這一串處置的第一次開始之前 20 個交易日,每天成交金額的中位數 ≥ 2 億元(成交股數 × 收盤價)</li>
+   <li>出關前第 6 個交易日收盤買、前 1 個交易日收盤賣;漲停買不到、跌停賣不掉就順延</li>
+   <li>出關那天不在另一段處置期間裡(不是假出關)</li>
+  </ol>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>樣本</th><th>筆數</th><th>超額中位數</th><th>勝率</th><th>95% 信賴區間</th></tr></thead>
+    <tbody id="t-cand"></tbody>
+   </table>
+  </div>
+  <p class="lede">平均每月 <b class="num" id="cand-freq"></b> 筆。如果每一筆都照做,本金 <span class="num" id="cand-capital"></span> 萬、只用現金(第二次處置要全額預收,賣掉的錢 T+2 才能再用):</p>
+  <div class="scroll">
+   <table>
+    <thead><tr><th>部位大小</th><th>年化</th><th>最大回檔</th><th>最長沒創新高</th></tr></thead>
+    <tbody id="t-cand-port"></tbody>
+   </table>
+  </div>
+  <p class="fine">報酬算法跟這頁其他地方一樣:扣掉來回 0.585% 成本與加權指數同期漲跌,持有期間遇到除權息、減資已還原。「每筆本金 10%」「每筆淨值 10%」跟本金大小無關。</p>
+ </section>
+
  <section>
   <h2>漲勢在出關前一日結束</h2>
   <div class="verdict" id="verdict"></div>

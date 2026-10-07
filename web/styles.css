@@ -197,6 +197,35 @@ h2::after {
 	background: var(--up);
 	color: #fff;
 }
+/* #30 研究中的候選:卡片標籤、警語、條件清單 */
+.cell .tag.cand {
+	margin-left: 6px;
+	background: var(--brass);
+	color: var(--surface);
+}
+.cand-note {
+	color: var(--brass);
+	font-weight: 700;
+}
+.warn {
+	margin: 0 0 18px;
+	padding: 14px 18px;
+	border-left: 4px solid var(--up);
+	background: var(--sunken);
+	font-size: 14px;
+	line-height: 1.7;
+}
+.conds {
+	margin: 0 0 18px;
+	padding-left: 1.4em;
+	font-size: 14px;
+	line-height: 1.8;
+}
+.fine {
+	font-size: 12.5px;
+	color: var(--muted);
+	max-width: 64ch;
+}
 .why {
 	font-size: 12.5px;
 	color: var(--muted);
@@ -607,11 +636,6 @@ a.quote:focus-visible {
 	border-radius: 10px;
 	min-width: 0;
 }
-/* 要比後面的 .controls .presets(padding: 0)特異度高 */
-.controls .module .presets {
-	padding: 14px 16px;
-	border-bottom: 1.5px solid var(--hair);
-}
 .module-body {
 	display: grid;
 	gap: 16px;
@@ -740,6 +764,11 @@ a.quote:focus-visible {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
+}
+/* 模組裡那一列要有內距和分隔線(#57);寫在 .controls .presets 之後 */
+.controls .module .presets {
+	padding: 14px 16px;
+	border-bottom: 1.5px solid var(--hair);
 }
 .controls .presets .label {
 	font-weight: 700;

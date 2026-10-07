@@ -78,6 +78,42 @@ export interface Current {
 	tradeReturn: number | null;
 	/** 尚未到買點 / 持有中 / 已賣出 / 漲停買不到… / 跌停賣不掉… */
 	tradeState: string;
+	/** 整串第一次處置前 20 日成交金額中位數(百萬元,#31)。算不出來是 null */
+	w2: number | null;
+	/** 符合 #30 的候選條件:第二次處置 × W2 ≥ 2 億 */
+	candidate: boolean;
+}
+
+/** 候選和對照組的事件研究統計 */
+export interface CandidateRow {
+	label: string;
+	n: number;
+	median: number;
+	win: number;
+	/** 按月群集拔靴的 95% CI */
+	low: number;
+	high: number;
+}
+
+/** 組合回測的一種部位大小(或大盤) */
+export interface PortfolioRow {
+	label: string;
+	annual: number;
+	mdd: number;
+	/** 最長多久沒創新高(日曆天) */
+	underwater: number;
+}
+
+/** #30:研究中的候選。網頁上一定要跟「還沒驗證」的警語一起出現 */
+export interface Candidate {
+	/** 門檻(百萬元) */
+	minW2: number;
+	/** 組合回測的本金(元) */
+	capital: number;
+	/** 平均每月幾筆 */
+	perMonth: number;
+	rows: CandidateRow[];
+	portfolio: PortfolioRow[];
 }
 
 export interface Period {
@@ -163,6 +199,7 @@ export interface Report {
 	offenders: Offender[];
 	/** 超額報酬的分布,畫直方圖用 */
 	dist: number[];
+	candidate: Candidate;
 }
 
 /** report.json 最上層必須有的欄位。Python 端的測試會對照這份清單 */
@@ -183,6 +220,7 @@ export const REQUIRED_KEYS: readonly (keyof Report)[] = [
 	"monthly",
 	"offenders",
 	"dist",
+	"candidate",
 ];
 
 /**

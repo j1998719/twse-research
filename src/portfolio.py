@@ -24,11 +24,13 @@ from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 
+from src.adjust import adjusted_closes
 from src.market import ROUND_TRIP_COST_PCT
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import date
 
 #: 一張 = 1000 股
 LOT = 1000
@@ -226,3 +228,46 @@ def losing_streak(pnls: Sequence[float]) -> int:
         run = run + 1 if value < 0 else 0
         longest = max(longest, run)
     return longest
+
+
+DAYS_PER_YEAR = 365.25
+
+
+def annualised(equity: pd.Series) -> float:
+    """年化報酬 %,用第一天到最後一天的日曆天數。"""
+    span = (equity.index[-1] - equity.index[0]).days
+    if not span:
+        return 0.0
+    return float(
+        ((equity.iloc[-1] / equity.iloc[0]) ** (DAYS_PER_YEAR / span) - 1) * 100
+    )
+
+
+def summary(equity: pd.Series) -> dict[str, float | int]:
+    """網頁和報表要的三個數字:年化、MDD、最長沒創新高(日曆天)。"""
+    return {
+        "annual": round(annualised(equity), 1),
+        "mdd": round(drawdown(equity).pct, 1),
+        "underwater": underwater_days(equity),
+    }
+
+
+def adjusted_marks(prices: pd.DataFrame, actions: pd.DataFrame | None) -> pd.DataFrame:
+    """交易日 × 代號 的還原收盤寬表,拿來每天評價持股(#59)。
+
+    沒有還原因子表就用原始收盤 —— 除息那天淨值會掉一截,減資那天會跳一截。
+    """
+    marks = prices[["code", "day", "close"]].assign(code=prices.code.astype(str))
+    if actions is not None:
+        marks = (
+            adjusted_closes(marks, actions)
+            .drop(columns="close")
+            .rename(columns={"adj_close": "close"})
+        )
+    return marks.pivot_table(index="day", columns="code", values="close")
+
+
+def index_curve(index: dict[date, float], days: pd.DatetimeIndex) -> pd.Series:
+    """同一段日曆的加權指數(買進持有的基準)。缺的日子用前一天。"""
+    series = pd.Series({pd.Timestamp(k): v for k, v in index.items()}).sort_index()
+    return series.reindex(days).ffill().dropna()

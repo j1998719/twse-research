@@ -121,7 +121,9 @@
 			"exitDay": "2026-10-06",
 			"exitDeferred": 0,
 			"tradeReturn": 6.42,
-			"tradeState": "已賣出"
+			"tradeState": "已賣出",
+			"w2": 120,
+			"candidate": false
 		},
 		{
 			"code": 4174,
@@ -154,7 +156,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": 19.9,
-			"tradeState": "持有中"
+			"tradeState": "持有中",
+			"w2": 120,
+			"candidate": false
 		},
 		{
 			"code": 3094,
@@ -187,7 +191,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": null,
-			"tradeState": "剛進場"
+			"tradeState": "剛進場",
+			"w2": 120,
+			"candidate": false
 		},
 		{
 			"code": 2221,
@@ -220,7 +226,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": null,
-			"tradeState": "尚未到買點"
+			"tradeState": "尚未到買點",
+			"w2": 120,
+			"candidate": false
 		},
 		{
 			"code": 6708,
@@ -253,7 +261,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": 1.92,
-			"tradeState": "持有中"
+			"tradeState": "持有中",
+			"w2": 35,
+			"candidate": false
 		},
 		{
 			"code": 3055,
@@ -286,7 +296,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": -10.58,
-			"tradeState": "跌停賣不掉,順延中"
+			"tradeState": "跌停賣不掉,順延中",
+			"w2": 120,
+			"candidate": false
 		},
 		{
 			"code": 8227,
@@ -319,7 +331,9 @@
 			"exitDay": null,
 			"exitDeferred": 0,
 			"tradeReturn": 1.08,
-			"tradeState": "持有中"
+			"tradeState": "持有中",
+			"w2": 450,
+			"candidate": true
 		}
 	],
 	"headline": {
@@ -952,5 +966,62 @@
 		11.6, 8.6, 8.8, -2.2, 4.7, -1.1, -2.1, -5.4, 3.0, -0.2, 4.3, 13.6, -1.3,
 		-4.8, 3.6, -1.8, -1.8, -2.7, -2.7, 37.1, 37.1, 10.9, 10.9, -1.4, 1.0, -5.6,
 		-7.0, 9.6, -1.4, 4.2
-	]
+	],
+	"candidate": {
+		"minW2": 200,
+		"capital": 1000000,
+		"perMonth": 3.8,
+		"rows": [
+			{
+				"label": "全部處置",
+				"n": 2261,
+				"median": 1.7,
+				"win": 58.2,
+				"low": 0.98,
+				"high": 2.47
+			},
+			{
+				"label": "第二次處置",
+				"n": 766,
+				"median": 3.19,
+				"win": 64.0,
+				"low": 1.7,
+				"high": 4.1
+			},
+			{
+				"label": "第二次 × 流動性 ≥ 2 億",
+				"n": 305,
+				"median": 4.41,
+				"win": 70.8,
+				"low": 3.27,
+				"high": 6.09
+			}
+		],
+		"portfolio": [
+			{
+				"label": "每筆 1 張",
+				"annual": 31.8,
+				"mdd": -15.3,
+				"underwater": 588
+			},
+			{
+				"label": "每筆本金 10%",
+				"annual": 17.1,
+				"mdd": -6.0,
+				"underwater": 422
+			},
+			{
+				"label": "每筆淨值 10%",
+				"annual": 26.7,
+				"mdd": -14.4,
+				"underwater": 441
+			},
+			{
+				"label": "加權指數買進持有",
+				"annual": 23.3,
+				"mdd": -31.6,
+				"underwater": 772
+			}
+		]
+	}
 }

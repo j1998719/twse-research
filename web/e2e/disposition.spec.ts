@@ -57,7 +57,9 @@ test("跌停賣不掉:虧損上綠色", async ({ page }) => {
 });
 
 test("第二次處置標全額預收", async ({ page }) => {
-	await expect(card(page, "8227").locator(".tag")).toHaveText("全額預收");
+	await expect(card(page, "8227").locator(".tag:not(.cand)")).toHaveText(
+		"全額預收",
+	);
 	await expect(card(page, "4174").locator(".tag")).toHaveText("第一次");
 });
 
@@ -120,4 +122,40 @@ test("圖照顯示寬度畫,手機上的字才不會縮成兩三個像素", asyn
 			1,
 		);
 	}
+});
+
+// ---- #30:研究中的候選(Jordan 2026-10-07:要放上網頁)----
+
+test("候選區塊一定帶著「還沒驗證」的警語", async ({ page }) => {
+	const section = page.locator("#candidate");
+	await expect(section.locator("h2")).toContainText("第二次處置 × 流動性");
+	await expect(section.locator(".warn")).toContainText("還沒驗證");
+	await expect(section.locator(".warn")).toContainText("不是建議");
+	await shot(page, "candidate");
+});
+
+test("候選和全體、第二次並排比較", async ({ page }) => {
+	const rows = page.locator("#t-cand tr");
+	await expect(rows).toHaveCount(3);
+	await expect(rows.nth(2)).toContainText("第二次 × 流動性 ≥ 2 億");
+	await expect(rows.nth(2)).toContainText("305");
+	await expect(rows.nth(2)).toContainText("+4.41%");
+	await expect(rows.nth(2)).toContainText("70.8%");
+	await expect(rows.nth(2)).toContainText("+3.27%");
+	await expect(page.locator("#cand-freq")).toHaveText("3.8");
+});
+
+test("候選的組合回測跟大盤並排", async ({ page }) => {
+	const rows = page.locator("#t-cand-port tr");
+	await expect(rows).toHaveCount(4);
+	await expect(rows.nth(1)).toContainText("每筆本金 10%");
+	await expect(rows.nth(1)).toContainText("-6.0%");
+	await expect(rows.nth(3)).toContainText("加權指數買進持有");
+	await expect(rows.nth(3)).toContainText("772 天");
+});
+
+test("目前處置中符合條件的卡片標「候選」", async ({ page }) => {
+	await expect(card(page, "8227").locator(".tag.cand")).toHaveText("候選");
+	await expect(card(page, "8227")).toContainText("流動性 4.5 億");
+	await expect(card(page, "4174").locator(".tag.cand")).toHaveCount(0);
 });

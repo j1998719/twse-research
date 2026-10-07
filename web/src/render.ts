@@ -109,8 +109,8 @@ function card(item: Current): string {
  <article class="cell ${second ? "second" : ""}">
   <div class="cell-top"><a class="quote" href="${yahooQuote(item.code, item.market)}" ${EXTERNAL} title="在 Yahoo 股市打開"><span class="code num">${item.code}</span>
    <span class="nm">${item.name}</span></a>
-   <span class="tag">${second ? "全額預收" : "第一次"}</span></div>
-  <div class="why">${item.condition}<br>${item.start} – ${item.end}</div>
+   <span class="tag">${second ? "全額預收" : "第一次"}</span>${item.candidate ? '<span class="tag cand">候選</span>' : ""}</div>
+  <div class="why">${item.condition}<br>${item.start} – ${item.end}${item.candidate && item.w2 !== null ? `<br><b class="cand-note">流動性 ${(item.w2 / 100).toFixed(1)} 億 · 符合研究中的候選條件</b>` : ""}</div>
   <div class="countdown"><span class="big num">${item.daysLeft}</span>
    <small>天後出關(${item.release})</small></div>
   <div class="plan">
@@ -130,6 +130,31 @@ function card(item: Current): string {
    <span class="state ${state}">${item.status}</span>
   </div>
  </article>`;
+}
+
+/** 研究中的候選(#30):並排比較與組合回測 */
+function candidate(report: Report): void {
+	const c = report.candidate;
+	html(
+		"t-cand",
+		c.rows
+			.map(
+				(r) =>
+					`<tr><td>${r.label}</td><td class="num">${thousands(r.n)}</td><td class="num ${sign(r.median)}">${pct(r.median)}</td><td class="num">${r.win.toFixed(1)}%</td><td class="num">${pct(r.low)} ~ ${pct(r.high)}</td></tr>`,
+			)
+			.join(""),
+	);
+	html(
+		"t-cand-port",
+		c.portfolio
+			.map(
+				(r) =>
+					`<tr><td>${r.label}</td><td class="num ${sign(r.annual)}">${pct(r.annual, 1)}</td><td class="num">${pct(r.mdd, 1)}</td><td class="num">${thousands(r.underwater)} 天</td></tr>`,
+			)
+			.join(""),
+	);
+	fill("cand-freq", String(c.perMonth));
+	fill("cand-capital", thousands(c.capital / 10_000));
 }
 
 function verdict(report: Report): string {
@@ -266,6 +291,7 @@ export function render(report: Report): void {
  黃底那列是 <strong>2022 空頭年</strong>,中位數同樣為正,與多頭年沒有顯著差異(p=0.83)。這支持「流動性折價」的解釋,而不是「多頭時什麼都會漲」。</p>`,
 	);
 	tables(report);
+	candidate(report);
 
 	const draw = (): void => {
 		drawPath(report.path.map((p) => [p.t, p.excess]));
