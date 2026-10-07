@@ -43,6 +43,7 @@
 from __future__ import annotations
 
 import csv
+import functools
 import gzip
 import io
 import re
@@ -101,7 +102,7 @@ class BoardError(ValueError):
     """這份看板解不出來。跟「那天沒有資料」不一樣,所以不能安靜地回空表。"""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Bond:
     """看板上的一列:一檔可轉債在那一天的條款。日期與價格空白是 None。"""
 
@@ -144,6 +145,9 @@ class Board:
         return next((b for b in self.bonds if b.code == code), None)
 
 
+# 兩千多份看板、七十萬列,不同的日期字串只有幾千個:快取起來,同一個日期
+# 共用同一個物件,記憶體和時間都省一個數量級
+@functools.cache
 def _cell_date(text: str, field: str) -> date | None:
     cleaned = text.strip()
     if cleaned in BLANK_DATES:
