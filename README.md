@@ -24,7 +24,9 @@ make fix     # 自動修正與排版
 .venv/bin/python -m src.fetch_prices 2025-01-01 2026-09-21   # 每日全市場收盤行情
 ```
 
-`data/` 不進版控 —— 裡面的東西都能用上面兩個指令重新產生。`data/raw/` 是原始回應的快取,
+`data/` 不進版控 —— 裡面的東西都能用上面兩個指令重新產生。**唯一的例外是集保股權分散快照**:
+來源只給最新一週,錯過就拿不回來,所以 `backup_tdcc.sh` 會把每一份壓縮後 commit 到
+`snapshots/tdcc/`(`update.sh` 每天跑)。換機器時把那裡的 `*.csv.gz` 解壓到 `data/raw/tdcc/`。`data/raw/` 是原始回應的快取,
 有快取時不會重複打 API,所以重跑很快。
 
 ## 幾個容易踩的坑
