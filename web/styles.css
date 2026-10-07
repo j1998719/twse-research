@@ -509,101 +509,6 @@ footer {
 	}
 }
 
-/* 區塊標題列:標題在左、篩選在右上角 */
-.section-head {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 12px;
-}
-.filter {
-	position: relative;
-}
-.filter summary {
-	list-style: none;
-	cursor: pointer;
-	font-size: 17px;
-	padding: 8px 14px;
-	min-height: 44px;
-	display: flex;
-	align-items: center;
-	border: 1.5px solid var(--hair);
-	border-radius: 6px;
-	background: var(--surface);
-}
-.filter summary::-webkit-details-marker {
-	display: none;
-}
-.filter summary::before {
-	content: "▾ ";
-	margin-right: 4px;
-}
-.filter[open] summary {
-	border-color: var(--ink);
-}
-.filter-menu {
-	position: absolute;
-	right: 0;
-	top: calc(100% + 6px);
-	z-index: 2;
-	min-width: 220px;
-	padding: 12px 16px;
-	background: var(--surface);
-	border: 1.5px solid var(--ink);
-	border-radius: 6px;
-	box-shadow: var(--shadow);
-	display: grid;
-	gap: 10px;
-}
-.filter-menu p {
-	margin: 0;
-	font-size: 13px;
-}
-.filter-menu label {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	font-size: 17px;
-	min-height: 36px;
-	cursor: pointer;
-}
-.filter-menu input {
-	width: 20px;
-	height: 20px;
-}
-
-/* 分頁:兩份清單同一頁,點上面的按鈕切換 */
-.tabs {
-	display: flex;
-	gap: 8px;
-	margin-top: 22px;
-	border-bottom: 1.5px solid var(--ink);
-}
-.tabs button {
-	font: inherit;
-	font-size: 17px;
-	font-weight: 700;
-	color: var(--muted);
-	background: none;
-	border: 1.5px solid transparent;
-	border-bottom: 0;
-	border-radius: 6px 6px 0 0;
-	padding: 10px 16px;
-	min-height: 48px;
-	margin-bottom: -1.5px;
-	cursor: pointer;
-}
-.tabs button[aria-selected="true"] {
-	color: var(--ink);
-	background: var(--surface);
-	border-color: var(--ink);
-	border-bottom: 1.5px solid var(--surface);
-}
-.tabs button:focus-visible {
-	outline: 2px solid var(--brass);
-	outline-offset: 2px;
-}
-
 /* 網頁之間的導覽:GitHub Pages 上兩頁並列(publish_pages.sh) */
 .sitenav {
 	display: flex;
@@ -656,4 +561,104 @@ a.quote:focus-visible {
 .rank-table a.quote {
 	display: block;
 	padding-block: 4px;
+}
+
+/* 條件積木(#50):一列一個條件,勾選、比較、數值、移除。手機上一樣好按 */
+.builder {
+	display: grid;
+	gap: 10px;
+	padding: 14px 16px;
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 8px;
+}
+.builder-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 12px;
+}
+.builder-title {
+	font-size: 17px;
+}
+.filters {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+}
+.filters li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--hair);
+}
+.filters input[type="checkbox"] {
+	width: 22px;
+	height: 22px;
+	accent-color: var(--brass);
+}
+.filters .what {
+	flex: 1 1 180px;
+	min-width: 0;
+	font-weight: 500;
+}
+.filters select,
+.filters input[type="number"],
+.builder select,
+.builder .reset {
+	font: inherit;
+	font-size: 16px;
+	color: var(--ink);
+	background: var(--ground);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 6px 10px;
+	min-height: 40px;
+}
+.filters input[type="number"] {
+	width: 7em;
+	font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.filters .unit {
+	color: var(--muted);
+	font-size: 14px;
+	min-width: 2.5em;
+}
+.filters .remove {
+	font: inherit;
+	font-size: 20px;
+	line-height: 1;
+	width: 40px;
+	height: 40px;
+	color: var(--muted);
+	background: none;
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	cursor: pointer;
+}
+.filters .remove:hover {
+	color: var(--up);
+	border-color: var(--up);
+}
+.builder .reset {
+	cursor: pointer;
+	align-self: end;
+}
+.filters input:focus-visible,
+.filters select:focus-visible,
+.filters .remove:focus-visible,
+.builder select:focus-visible,
+.builder .reset:focus-visible {
+	outline: 2px solid var(--brass);
+	outline-offset: 1px;
+}
+/* 停用的條件:文字劃掉。放在 .what / .unit 之後,特異度才不會倒過來 */
+.filters li.off .what,
+.filters li.off .unit {
+	color: var(--muted);
+	text-decoration: line-through;
 }

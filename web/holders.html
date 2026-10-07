@@ -16,7 +16,7 @@
  <header class="masthead">
   <div class="eyebrow">上市 + 上櫃普通股 · 集保股權分散表</div>
   <h1>大戶持股排行</h1>
-  <p class="dek">哪些股票的大戶拿得最多、這一週有沒有變多。「大戶」要多少張才算沒有標準答案,下面可以切換。</p>
+  <p class="dek">一張清單,自己堆條件:大戶拿多少、比上週多了沒、有沒有跌破長期均線、法人在買還是在賣、融資有沒有增加。「大戶」要多少張才算沒有標準答案,下面可以切換。</p>
   <div class="meta">
    <span>集保資料 <b id="m-day"></b><span id="m-prev" class="qual"></span></span>
    <span>收盤價 <b id="m-price"></b></span>
@@ -24,13 +24,7 @@
   </div>
  </header>
 
- <div class="tabs" role="tablist" aria-label="切換清單">
-  <button type="button" role="tab" id="tab-holders" aria-controls="holders-section" data-tab="holders">大戶持股排行</button>
-  <button type="button" role="tab" id="tab-ma" aria-controls="ma-section" data-tab="ma">跌破長期均線</button>
-  <button type="button" role="tab" id="tab-flows" aria-controls="flows-section" data-tab="flows">籌碼總覽</button>
- </div>
-
- <section id="holders-section" role="tabpanel" aria-labelledby="tab-holders">
+ <section>
   <div class="controls">
    <fieldset class="seg" aria-label="大戶門檻">
     <span class="label">大戶 =</span>
@@ -39,28 +33,31 @@
     <button type="button" data-level="2">800 張以上</button>
     <button type="button" data-level="3">1000 張以上</button>
    </fieldset>
+
+   <div class="builder">
+    <div class="builder-head">
+     <h2 class="builder-title">條件</h2>
+     <span class="qual">勾選的條件全部成立才列出來</span>
+    </div>
+    <ul class="filters" id="filters"></ul>
+    <div class="row">
+     <label>新增條件
+      <select id="add">
+       <option value="">+ 選一個項目…</option>
+      </select>
+     </label>
+     <button type="button" class="reset" id="reset">恢復預設</button>
+    </div>
+   </div>
+
    <div class="row">
     <label>排序
-     <select id="sort">
-      <option value="pct">大戶持股比例</option>
-      <option value="delta" id="sort-delta">比上週增加最多</option>
-      <option value="people">大戶人數</option>
-      <option value="change">今天漲跌</option>
-     </select>
+     <select id="sort"></select>
     </label>
-    <label>市場
-     <select id="market">
-      <option value="all">全部</option>
-      <option value="twse">上市</option>
-      <option value="otc">上櫃</option>
-     </select>
-    </label>
-    <label>成交量至少
-     <select id="min-lots">
-      <option value="0">不限</option>
-      <option value="100" selected>100 張</option>
-      <option value="500">500 張</option>
-      <option value="1000">1000 張</option>
+    <label>方向
+     <select id="dir">
+      <option value="desc">由大到小</option>
+      <option value="asc">由小到大</option>
      </select>
     </label>
     <label class="grow">搜尋
@@ -70,89 +67,23 @@
    <p class="count" id="count"></p>
   </div>
 
-  <p class="note" id="no-prev" hidden>目前只有一週的集保資料,所以還沒有「比上週」。每週存一份之後,下週起就會有。</p>
+  <p class="note" id="pending" hidden></p>
 
   <div class="scroll">
    <table class="rank-table">
-    <thead><tr>
-     <th>#</th><th>股票</th><th>收盤</th><th>漲跌</th>
-     <th id="th-big">大戶持股</th><th>比上週</th>
-     <th class="opt">大戶人數</th><th class="opt">成交張數</th>
-    </tr></thead>
+    <thead><tr id="head"></tr></thead>
     <tbody id="rows"></tbody>
    </table>
   </div>
   <button type="button" class="more" id="more" hidden></button>
  </section>
 
- <section id="ma-section" role="tabpanel" aria-labelledby="tab-ma">
-  <div class="section-head">
-   <h2>跌破長期均線</h2>
-   <details class="filter" id="ma-filter">
-    <summary>篩選</summary>
-    <div class="filter-menu">
-     <p class="qual">收盤價低於勾選的<b>每一條</b>線</p>
-     <label><input type="checkbox" id="f-ma10y" checked> 十年線以下</label>
-     <label><input type="checkbox" id="f-ma5y"> 五年線以下</label>
-    </div>
-   </details>
-  </div>
-  <p class="count" id="ma-count"></p>
-  <p class="note" id="ma-pending" hidden>長期均線還在準備中:十年線要用十年的還原股價來算,這些歷史資料正在下載,補齊後這裡就會出現清單。</p>
-  <div class="scroll" id="ma-table">
-   <table class="rank-table">
-    <thead><tr>
-     <th>#</th><th>股票</th><th>收盤</th>
-     <th class="opt">五年線</th><th>距五年線</th>
-     <th class="opt">十年線</th><th>距十年線</th>
-     <th class="opt">千張大戶</th>
-    </tr></thead>
-    <tbody id="ma-rows"></tbody>
-   </table>
-  </div>
-  <button type="button" class="more" id="ma-more" hidden></button>
- </section>
-
- <section id="flows-section" role="tabpanel" aria-labelledby="tab-flows">
-  <div class="controls">
-   <div class="row">
-    <label>排序
-     <select id="flow-sort">
-      <option value="inst5">三大法人近 5 日買超</option>
-      <option value="foreign5">外資近 5 日買超</option>
-      <option value="trust5">投信近 5 日買超</option>
-      <option value="inst20">三大法人近 20 日買超</option>
-      <option value="marginChg5">融資近 5 日增加</option>
-      <option value="shortRatio">券資比</option>
-     </select>
-    </label>
-    <label class="grow">搜尋
-     <input id="flow-q" type="search" inputmode="search" placeholder="代號或股名">
-    </label>
-   </div>
-   <p class="count" id="flow-count"></p>
-  </div>
-  <p class="note" id="flows-pending" hidden>法人與融資融券的資料還在準備中。</p>
-  <div class="scroll" id="flow-table">
-   <table class="rank-table">
-    <thead><tr>
-     <th>#</th><th>股票</th><th>收盤</th>
-     <th>千張大戶</th><th class="opt">大戶週變化</th>
-     <th>法人 5 日</th><th class="opt">外資</th><th class="opt">投信</th>
-     <th class="opt">融資餘額</th><th>融資 5 日</th><th class="opt">券資比</th>
-    </tr></thead>
-    <tbody id="flow-rows"></tbody>
-   </table>
-  </div>
-  <button type="button" class="more" id="flow-more" hidden></button>
-  <p class="qual">單位:張。法人是買賣超(正的是買超);融資 5 日是餘額跟 5 個交易日前比;券資比 = 融券餘額 ÷ 融資餘額。</p>
- </section>
-
  <div class="note">
   <h3>怎麼看</h3>
   <p style="margin:0"><b>大戶持股</b>是持有超過門檻張數的股東,合計佔全部集保股數的比例。<b>比上週</b>是這個比例增加或減少幾個百分點 —— 例如 49% 變成 50% 是 +1.00。<br>
   集保每週五公布一次(資料日期是週五),所以大戶數字一週才變一次;收盤價是每個交易日更新。<br>
-  大戶比例高的公司,很多只是董監事或集團本來就持有大部分股份,不代表有人在買。<b>週變化</b>比絕對比例更能看出動向。成交量太小的股票預設不顯示,因為它們的大戶比例常常天生就很高。<br>
+  大戶比例高的公司,很多只是董監事或集團本來就持有大部分股份,不代表有人在買。<b>週變化</b>比絕對比例更能看出動向。預設只列成交量至少 100 張的,因為成交量太小的股票大戶比例常常天生就很高;不要的話把那個條件取消勾選或移除。<br>
+  法人是近 5 / 20 個交易日的買賣超(張,正的是買超);融資是餘額跟 5 個交易日前比;券資比 = 融券餘額 ÷ 融資餘額。<br>
   <b>五年線、十年線</b>是最近 1,200 / 2,400 個交易日(台股習慣一年算 240 日)收盤價的平均,用<b>還原股價</b>算 —— 除權息、減資造成的價格跳空已經還原,不會因為配息就「看起來」跌破。上市不滿五年或十年的股票沒有那條線,不會出現在清單裡。</p>
  </div>
 
