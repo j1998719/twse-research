@@ -39,6 +39,24 @@ def year_chunks(start: date, end: date) -> list[tuple[date, date]]:
     return chunks
 
 
+def unique_punishes(rows: list[Punish]) -> list[Punish]:
+    """去掉重複的處置公告,保留第一次出現的順序(#59)。
+
+    證交所按年分段查詢時,處置期間跨年的那幾筆(12 月底公告、1 月初結束)
+    兩段都會回來。2020–2026 有 28 筆,頭條樣本因此多算了 20 筆一模一樣的交易。
+    同一檔、同一天公告、同一段期間、同一種措施就是同一筆。
+    """
+    seen: set[tuple[object, ...]] = set()
+    out: list[Punish] = []
+    for row in rows:
+        key = (row.code, row.announced, row.start, row.end, row.measure)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
 def write_csv(rows: list[Any], path: Path) -> None:
     """把 dataclass 清單寫成 CSV。空清單不會產生檔案。"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +85,7 @@ def main() -> None:
         punishes.extend(p)
 
     notices.sort(key=lambda r: (r.day, r.code))
+    punishes = unique_punishes(punishes)
     punishes.sort(key=lambda r: (r.announced, r.code))
 
     write_csv(notices, OUT / "notices.csv")
