@@ -84,79 +84,115 @@ def call_events(
     return first_only(itm, days), first_only(otm, days)
 
 
+@dataclass(frozen=True)
+class Setting:
+    """跑一組可轉債事件要的東西:資料、交易日、安慰劑的股票池(有發過可轉債的標的)。"""
+
+    data: Data
+    days: pd.DatetimeIndex
+    underlyings: list[str]
+
+    @classmethod
+    def load(cls, boards: Sequence[Board]) -> Setting:
+        """讀長日線、還原因子;安慰劑池 = 看板上出現過、而且有股價的標的。"""
+        data = Data(boards)
+        days = pd.DatetimeIndex([pd.Timestamp(d) for d in data.days])
+        pool = {b.underlying for board in boards for b in board.bonds} & set(
+            data.closes
+        )
+        return cls(data, days, sorted(pool))
+
+
+def _anywhere(_code: str, _day: pd.Timestamp) -> bool:
+    return True
+
+
+def evaluate(
+    setting: Setting,
+    hits: list[Hit],
+    keep: Callable[[str, pd.Timestamp], bool],
+    span: tuple[pd.Timestamp, pd.Timestamp],
+) -> list[Row]:
+    """每個持有期:事件 vs 同期安慰劑(Mann-Whitney 雙尾)。"""
+    days, data = setting.days, setting.data
+    base = placebo_hits(
+        setting.underlyings, days[(days >= span[0]) & (days <= span[1])]
+    )
+    out = []
+    for h in HORIZONS:
+        ev = scored([x for x in hits if keep(*x)], h, days, data.excess, _anywhere)
+        null = scored(base, h, days, data.excess, _anywhere)
+        p = float(
+            stats.mannwhitneyu(ev.excess, null.excess, alternative="two-sided").pvalue
+        )
+        out.append(
+            Row(h, summarize(ev, data.market_of), summarize(null, data.market_of), p)
+        )
+    return out
+
+
+def report(
+    label: str, rows: Sequence[Row], corrected: Sequence[float] | None
+) -> list[bool]:
+    """印出每個持有期;回傳哪些「找到了」(p < 0.05 而且 CI 跟安慰劑不重疊)。"""
+    print(label)
+    found = []
+    for i, r in enumerate(rows):
+        s, s0 = r.event, r.placebo
+        q = corrected[i] if corrected is not None else r.p
+        ok = q < ALPHA and r.apart()
+        found.append(ok)
+        print(
+            f"  持有 {r.horizon:>2} 日:事件 n={s['n']} 中位數 {s['median']:+.2f}% 勝率 {s['win']:.1f}%"
+            f" CI [{s['low']:+.2f},{s['high']:+.2f}]  |  安慰劑 n={s0['n']} {s0['median']:+.2f}%"
+            f" CI [{s0['low']:+.2f},{s0['high']:+.2f}]  |  差 {s['median'] - s0['median']:+.2f}"
+            f"  {'BH ' if corrected is not None else ''}p={q:.4f}  {'找到了' if ok else '—'}"
+        )
+    return found
+
+
+def registered(setting: Setting, hits: list[Hit], label: str) -> None:
+    """登記的流程:形成組一次 BH;找到了的持有期才在驗證組重跑,不再校正。"""
+    first, last = (
+        pd.Timestamp(setting.data.days[0]),
+        pd.Timestamp(setting.data.days[-1]),
+    )
+    formation = evaluate(
+        setting, hits, lambda _c, d: d <= FORMATION_END, (first, FORMATION_END)
+    )
+    q = list(multipletests([r.p for r in formation], method="fdr_bh")[1])
+    found = report(f"形成組(2017–2021,{label}),一次 BH:", formation, q)
+    if not any(found):
+        print("\n形成組沒有「找到了」,照登記不跑驗證組。")
+        return
+    later = evaluate(
+        setting, hits, lambda _c, d: d > FORMATION_END, (FORMATION_END, last)
+    )
+    report(
+        "\n驗證組(2022 起,只看「找到了」的持有期,不再校正):",
+        [r for r, f in zip(later, found, strict=True) if f],
+        None,
+    )
+
+
 def main() -> int:
     """2 個檢定、BH、群集 CI 與安慰劑比較、樣本外、價外描述。"""
     cli.no_args(__doc__)
     boards = load_boards(BOARDS)
-    data = Data(boards)
-    days = pd.DatetimeIndex([pd.Timestamp(d) for d in data.days])
-    itm, otm = call_events(boards, days)
-    underlyings = sorted(
-        {b.underlying for board in boards for b in board.bonds} & set(data.closes)
-    )
+    setting = Setting.load(boards)
+    itm, otm = call_events(boards, setting.days)
     print(
-        f"強制贖回事件:價內 {len(itm)}、價外 {len(otm)};有發過可轉債的標的 {len(underlyings)} 檔\n"
+        f"強制贖回事件:價內 {len(itm)}、價外 {len(otm)};"
+        f"有發過可轉債的標的 {len(setting.underlyings)} 檔\n"
     )
-
-    def anywhere(_c: str, _d: pd.Timestamp) -> bool:
-        return True
-
-    def run(
-        hits: list[Hit],
-        keep: Callable[[str, pd.Timestamp], bool],
-        lo: pd.Timestamp,
-        hi: pd.Timestamp,
-    ) -> list[Row]:
-        base = placebo_hits(underlyings, days[(days >= lo) & (days <= hi)])
-        out = []
-        for h in HORIZONS:
-            ev = scored([x for x in hits if keep(*x)], h, days, data.excess, anywhere)
-            null = scored(base, h, days, data.excess, anywhere)
-            s, s0 = summarize(ev, data.market_of), summarize(null, data.market_of)
-            p = float(
-                stats.mannwhitneyu(
-                    ev.excess, null.excess, alternative="two-sided"
-                ).pvalue
-            )
-            out.append(Row(h, s, s0, p))
-        return out
-
-    def show(
-        label: str, rows: list[Row], corrected: Sequence[float] | None
-    ) -> list[bool]:
-        print(label)
-        found = []
-        for i, r in enumerate(rows):
-            s, s0 = r.event, r.placebo
-            q = corrected[i] if corrected is not None else r.p
-            ok = q < ALPHA and r.apart()
-            found.append(ok)
-            print(
-                f"  持有 {r.horizon:>2} 日:事件 n={s['n']} 中位數 {s['median']:+.2f}% 勝率 {s['win']:.1f}%"
-                f" CI [{s['low']:+.2f},{s['high']:+.2f}]  |  安慰劑 n={s0['n']} {s0['median']:+.2f}%"
-                f" CI [{s0['low']:+.2f},{s0['high']:+.2f}]  |  差 {s['median'] - s0['median']:+.2f}"
-                f"  {'BH ' if corrected is not None else ''}p={q:.4f}  {'找到了' if ok else '—'}"
-            )
-        return found
-
-    first = pd.Timestamp(data.days[0])
-    formation = run(itm, lambda _c, d: d <= FORMATION_END, first, FORMATION_END)
-    q = list(multipletests([r.p for r in formation], method="fdr_bh")[1])
-    found = show("形成組(2017–2021,價內,⚠️ 小樣本先導),一次 BH:", formation, q)
-
-    last = pd.Timestamp(data.days[-1])
-    if any(found):
-        later = run(itm, lambda _c, d: d > FORMATION_END, FORMATION_END, last)
-        show(
-            "\n驗證組(2022 起,只看「找到了」的持有期,不再校正):",
-            [r for r, f in zip(later, found, strict=True) if f],
-            None,
-        )
-    else:
-        print("\n形成組沒有「找到了」,照登記不跑驗證組。")
-    show(
+    registered(setting, itm, "價內,⚠️ 小樣本先導")
+    first, last = (
+        pd.Timestamp(setting.data.days[0]),
+        pd.Timestamp(setting.data.days[-1]),
+    )
+    report(
         "\n描述(不是檢定):價外的強制贖回,全期",
-        run(otm, lambda _c, _d: True, first, last),
+        evaluate(setting, otm, _anywhere, (first, last)),
         None,
     )
     return 0
