@@ -126,7 +126,7 @@ export interface PathPoint {
 export interface MarketCoverage {
 	codes: number;
 	punishes: number;
-	backtested: number;
+	studied: number;
 }
 
 export interface Report {
@@ -139,7 +139,7 @@ export interface Report {
 		noticesMarket: string;
 		punishes: number;
 		tradingDays: number;
-		backtested: number;
+		studied: number;
 		codes?: number;
 		/** 分市場的檔數、公告數、可回測事件數。上櫃的流動性和上市不同,
 		 *  一個分不出市場的涵蓋率等於把兩個不同的東西當成一個 */

@@ -368,7 +368,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
             "noticesMarket": "twse",
             "punishes": len(punishes),
             "tradingDays": len(days),
-            "backtested": len(runs),
+            "studied": len(runs),
             "codes": int(prices.code.nunique()),
             "markets": _by_market(prices, punishes, runs),
             "dropped": {
@@ -481,9 +481,9 @@ def _by_market(
         out[market] = {
             "codes": int(prices[prices.market == market].code.nunique()),
             "punishes": int((punishes.market == market).sum()),
-            "backtested": events.get(market, 0),
+            "studied": events.get(market, 0),
         }
-    total = sum(v["backtested"] for v in out.values())
+    total = sum(v["studied"] for v in out.values())
     if total != len(runs):
         msg = f"分市場的事件數 {total} 和總數 {len(runs)} 對不上:{out}"
         raise ValueError(msg)
@@ -496,7 +496,7 @@ def main() -> None:
     report = build(pd.Timestamp.today().normalize())
     path = OUT / "report.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"輸出 {path}:{report['coverage']['backtested']} 筆可回測事件")
+    print(f"輸出 {path}:{report['coverage']['studied']} 筆納入研究的事件")
 
 
 if __name__ == "__main__":

@@ -69,18 +69,18 @@
 		"noticesMarket": "twse",
 		"punishes": 3117,
 		"tradingDays": 1642,
-		"backtested": 2281,
+		"studied": 2281,
 		"codes": 2061,
 		"markets": {
 			"otc": {
 				"codes": 948,
 				"punishes": 1835,
-				"backtested": 1321
+				"studied": 1321
 			},
 			"twse": {
 				"codes": 1127,
 				"punishes": 1282,
-				"backtested": 960
+				"studied": 960
 			}
 		},
 		"dropped": {

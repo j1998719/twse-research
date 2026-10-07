@@ -49,13 +49,13 @@ def test_產出的欄位跟型別定義一致():
 def test_巢狀結構的關鍵欄位():
     """幾個畫面一定會讀到的內層欄位,缺了就是空白。"""
     data = json.loads(REPORT.read_text(encoding="utf-8"))
-    assert {"from", "to", "backtested", "dropped"} <= set(data["coverage"])
+    assert {"from", "to", "studied", "dropped"} <= set(data["coverage"])
     assert {"lookahead", "fakeRelease", "unfilled"} <= set(data["coverage"]["dropped"])
     assert "中位數%" in data["headline"]
     # 分市場的涵蓋率。原本只檢查最上層的 key,所以這層改名不會有人發現
     assert {"codes", "markets", "noticesMarket"} <= set(data["coverage"])
     for market, facts in data["coverage"]["markets"].items():
-        assert {"codes", "punishes", "backtested"} <= set(facts), market
+        assert {"codes", "punishes", "studied"} <= set(facts), market
     assert data["path"], "價格路徑不能是空的"
     for point in data["path"]:
         assert {"t", "excess", "n"} <= set(point)

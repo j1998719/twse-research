@@ -41,7 +41,7 @@ function meta(report: Report): void {
 	fill("m-notice-mk", c.noticesMarket === "twse" ? "(僅上市)" : "");
 	fill("m-punish", thousands(c.punishes));
 	fill("m-days", thousands(c.tradingDays));
-	fill("m-bt", thousands(c.backtested));
+	fill("m-bt", thousands(c.studied));
 	fill("m-codes", c.codes === undefined ? "—" : thousands(c.codes));
 	fill("m-markets", marketBreakdown(c.markets));
 	fill(
@@ -84,7 +84,7 @@ function marketBreakdown(
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(
 			([key, m]) =>
-				`${label[key] ?? key} ${thousands(m.backtested)}(${thousands(m.codes)} 檔)`,
+				`${label[key] ?? key} ${thousands(m.studied)}(${thousands(m.codes)} 檔)`,
 		);
 	return parts.join(" · ") || "—";
 }

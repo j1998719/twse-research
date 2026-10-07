@@ -106,8 +106,8 @@ SUMMARY=$(.venv/bin/python -c "
 import json
 c = json.load(open('data/out/report.json'))['coverage']
 by = c.get('markets') or {}
-parts = ' '.join(f\"{k}:{v['backtested']}\" for k, v in sorted(by.items()))
-print(f\"{c['backtested']} 筆可回測事件({parts})、{c.get('codes')} 檔\")
+parts = ' '.join(f\"{k}:{v['studied']}\" for k, v in sorted(by.items()))
+print(f\"{c['studied']} 筆納入研究的事件({parts})、{c.get('codes')} 檔\")
 ")
 if [[ -n "$FAILED" ]]; then
   say "!! 有抓取失敗:$FAILED —— 報告是用現有資料算的"
