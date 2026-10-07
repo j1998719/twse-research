@@ -42,6 +42,9 @@ UA = {"User-Agent": "Mozilla/5.0"}
 
 #: 因子超出這個範圍就當成資料錯誤 —— 一次 20 倍的跳空不是除權息
 FACTOR_RANGE = (0.05, 20.0)
+#: 面額變更的合理範圍(含邊界)。10 元換 0.5 元就是剛好 1/20(5314 世紀 2025-03,
+#: #59),用除權息那一套開區間會把它當成資料錯誤丟掉
+PAR_RANGE = (0.01, 100.0)
 
 _ROC_FULL = re.compile(r"^(\d{2,3})年(\d{1,2})月(\d{1,2})日$")
 _ROC_SLASH = re.compile(r"^(\d{2,3})/(\d{1,2})/(\d{1,2})$")
@@ -81,6 +84,8 @@ class Source:
     ref: tuple[str, ...]
     #: 減資併同除息時的最終參考價。有值就取代 ref
     override: tuple[str, ...] = ()
+    #: 面額變更可以一次 20 倍以上,範圍不一樣(PAR_RANGE)
+    par: bool = False
     #: 同一天兩個來源都有時,數字小的優先
     priority: int = 1
 
@@ -134,6 +139,7 @@ SOURCES = (
         code=("股票代號", "證券代號"),
         prev=("停止買賣前收盤價格", "最後交易日之收盤價格"),
         ref=("恢復買賣參考價", "恢復買賣開始參考價"),
+        par=True,
         priority=0,
     ),
     Source(
@@ -144,6 +150,7 @@ SOURCES = (
         code=("證券代號", "股票代號"),
         prev=("最後交易日之收盤價格", "停止買賣前收盤價格"),
         ref=("恢復買賣開始參考價", "恢復買賣參考價"),
+        par=True,
         priority=0,
     ),
 )
@@ -223,7 +230,10 @@ def parse(payload: dict[str, Any], source: Source) -> list[Action]:
         if prev is None or ref is None:
             continue
         factor = ref / prev
-        if not FACTOR_RANGE[0] < factor < FACTOR_RANGE[1]:
+        if source.par:
+            if not PAR_RANGE[0] <= factor <= PAR_RANGE[1]:
+                continue
+        elif not FACTOR_RANGE[0] < factor < FACTOR_RANGE[1]:
             continue
         key = (code, day)
         if key in found and (found[key][0] or final is None):
