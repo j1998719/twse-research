@@ -256,6 +256,18 @@ def _offenders(numbered: pd.DataFrame, limit: int = 12) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
+def market_return(index: dict[date, float], days: pd.DatetimeIndex) -> float:
+    """研究期間內加權指數買進持有的報酬 %。
+
+    只取研究期間(第一個到最後一個交易日)。指數快取比研究期間長(從 2016
+    開始),拿快取的第一天當起點、卻用研究期間的天數年化,會把大盤灌成 +514%、
+    年化 30.8% —— 實際同期是 +311.7%、23.3%(#33 的組合回測對出來的)。
+    """
+    series = pd.Series({pd.Timestamp(k): v for k, v in index.items()}).sort_index()
+    series = series.loc[days.min() : days.max()]
+    return float((series.iloc[-1] / series.iloc[0] - 1) * 100)
+
+
 def build(today: pd.Timestamp) -> dict[str, Any]:
     """讀出所有資料,算出網頁要的每一塊。"""
     # 全市場(上市 + 上櫃)。原本只讀 prices.csv / punishes.csv,所以網頁顯示
@@ -282,9 +294,8 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         raw_runs.knowable & raw_runs.truly_released & raw_runs.excess.notna()
     ]
 
-    series = pd.Series({pd.Timestamp(k): v for k, v in index.items()}).sort_index()
     span = (days.max() - days.min()).days + 1
-    market = float((series.iloc[-1] / series.iloc[0] - 1) * 100)
+    market = market_return(index, days)
 
     years = []
     for period in MARKET_REGIMES:

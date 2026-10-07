@@ -355,3 +355,19 @@ def test_進場就在最新收盤_報酬留空_不顯示負的成本() -> None:
     assert got["entryPrice"] == 101.0
     assert got["tradeState"] == "剛進場"
     assert got["tradeReturn"] is None
+
+
+def test_大盤報酬只算研究期間_不是整個指數快取() -> None:
+    # 指數快取從 2016 年開始,研究期間從 2020 開始。以前拿 2016 的點數當起點,
+    # 再用研究期間的天數去年化,大盤被灌成 +514%、年化 30.8%(實際 +311.7%、23.3%)
+    from datetime import date
+
+    from src.build_report import market_return
+
+    index = {
+        date(2016, 1, 4): 8000.0,
+        date(2020, 1, 2): 10000.0,
+        date(2026, 10, 6): 40000.0,
+    }
+    days = pd.DatetimeIndex(pd.to_datetime(["2020-01-02", "2026-10-06"]))
+    assert market_return(index, days) == pytest.approx(300.0)
