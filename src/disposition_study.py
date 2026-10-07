@@ -525,6 +525,74 @@ def pre_release_run(
     return out
 
 
+def exit_rule(
+    runs: pd.DataFrame,
+    prices: pd.DataFrame,
+    index: dict[date, float] | None = None,
+    *,
+    stop: float | None = None,
+    take: float | None = None,
+) -> pd.DataFrame:
+    """在 pre_release_run 的每一筆上套停損或停利,看提早出場會怎樣(#15)。
+
+    從買進的下一個交易日起,每天收盤看毛報酬:跌到 −stop 或漲到 +take 就觸發,
+    在**下一個交易日收盤**賣 —— 收盤後才知道觸發,不能用同一根收盤成交。
+    賣出那天跌停照樣順延(#45)。觸發的隔天已經是原定賣出日(或更晚)就照原定賣,
+    不算觸發。stop / take 是比例,0.05 = 5%,一次只測一種。
+    """
+    if (stop is None) == (take is None):
+        msg = "stop 和 take 一次只測一種,也不能都不給"
+        raise ValueError(msg)
+    index = index or {}
+    days = trading_days(prices)
+    close = build_panels(prices)["close"]
+    book = Book(days, close, close)
+
+    records: list[dict[str, object]] = []
+    #: 每一列在 runs 裡的索引。成對檢定要逐筆對齊基準,跳過的列不能讓後面錯位
+    kept: list[object] = []
+    for at, raw in zip(runs.index, runs.to_dict("records"), strict=True):
+        code = raw["code"]
+        bought = pd.Timestamp(str(raw["buy_day"]))
+        planned = pd.Timestamp(str(raw["sell_day"]))
+        buy = float(raw["buy"])
+        sold, triggered = planned, False
+        for k in range(_pos(days, bought) + 1, _pos(days, planned)):
+            px = as_number(close.at[days[k], code])
+            if px is None:
+                continue
+            change = px / buy - 1
+            hit = (stop is not None and change <= -stop) or (
+                take is not None and change >= take
+            )
+            if not hit:
+                continue
+            if k + 1 < _pos(days, planned):
+                found = tradable_from(book, code, days[k + 1], None, buying=False)
+                if found is not None and found < planned:
+                    sold, triggered = found, True
+            break
+        sell = as_number(close.at[sold, code])
+        if sell is None:
+            continue
+        gross = (sell / buy - 1) * 100
+        net = gross - ROUND_TRIP_COST_PCT
+        market = _index_return(index, bought, sold)
+        kept.append(at)
+        records.append(
+            {
+                "code": code,
+                "buy_day": bought.date(),
+                "sell_day": sold.date(),
+                "triggered": triggered,
+                "gross": round(gross, 2),
+                "net": round(net, 2),
+                "excess": None if market is None else round(net - market, 2),
+            }
+        )
+    return pd.DataFrame(records, index=pd.Index(kept))
+
+
 #: 一個月平均幾天
 DAYS_PER_MONTH = 30.44
 DAYS_PER_YEAR = 365.25
