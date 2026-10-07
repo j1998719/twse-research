@@ -6,11 +6,10 @@
 from __future__ import annotations
 
 import csv
-import sys
 from dataclasses import asdict, fields
-from datetime import date
 from pathlib import Path
 
+from src import cli
 from src.chips import Chips, fetch_chips, parse_chips
 from src.prices import weekdays
 
@@ -21,8 +20,7 @@ OUT = Path("data/out")
 
 def main() -> None:
     """抓取期間內每個交易日的三大法人買賣超。"""
-    start = date.fromisoformat(sys.argv[1])
-    end = date.fromisoformat(sys.argv[2])
+    start, end = cli.date_range(__doc__)
     days = weekdays(start, end)
     print(f"要處理 {len(days)} 個平日(非交易日會自動跳過)", flush=True)
 

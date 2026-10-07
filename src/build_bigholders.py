@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from src import cli
 from src.adjust import LongTerm, adjusted_closes, long_term
 from src.fetch_tdcc import ARCHIVE
 from src.flows import FLOW_KEYS, load_flows
@@ -222,6 +223,7 @@ def build(
 
 def main() -> int:
     """讀最新兩份快照和行情,寫出 bigholders.json。"""
+    cli.no_args(__doc__)
     snaps = latest_snapshots()
     if not snaps:
         print(f"{ARCHIVE} 裡沒有集保快照,先跑 src.fetch_tdcc", file=sys.stderr)

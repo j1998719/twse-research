@@ -17,12 +17,12 @@ from dataclasses import asdict, fields
 from datetime import date, timedelta
 from pathlib import Path
 
+from src import cli
 from src.corpactions import SOURCES, Action, Source, cached, merge, parse
 
 
 RAW = Path("data/raw/actions")
 OUT = Path("data/out/corporate_actions.csv")
-ARGC = 3
 
 
 def windows(source: Source, start: date, end: date) -> list[tuple[date, date]]:
@@ -61,11 +61,7 @@ def collect(start: date, end: date, *, today: date) -> tuple[list[Action], list[
 
 def main(argv: list[str]) -> int:
     """抓完全部來源才寫檔。"""
-    if len(argv) != ARGC:
-        print(__doc__, file=sys.stderr)
-        return 2
-    start = date.fromisoformat(argv[1])
-    end = date.fromisoformat(argv[2])
+    start, end = cli.date_range(__doc__, argv[1:])
     actions, failed = collect(start, end, today=date.today())  # noqa: DTZ011
     if failed:
         print(f"有 {len(failed)} 段失敗,不寫檔(保留上一份):", file=sys.stderr)

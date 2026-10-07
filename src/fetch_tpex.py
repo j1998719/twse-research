@@ -14,9 +14,10 @@ from __future__ import annotations
 import csv
 import sys
 from dataclasses import asdict, fields
-from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from src import cli
 from src.prices import weekdays
 from src.tpex import (
     Quote,
@@ -27,10 +28,12 @@ from src.tpex import (
 )
 
 
+if TYPE_CHECKING:
+    from datetime import date
+
+
 RAW = Path("data/raw/tpex")
 OUT = Path("data/out")
-#: 命令列參數個數:程式名 + 起日 + 迄日
-ARGC = 3
 
 
 def fetch_prices(start: date, end: date) -> int:
@@ -87,11 +90,7 @@ def fetch_punishes(start: date, end: date) -> int:
 
 def main(argv: list[str]) -> int:
     """抓行情與處置公告。"""
-    if len(argv) != ARGC:
-        print(__doc__, file=sys.stderr)
-        return 2
-    start = date.fromisoformat(argv[1])
-    end = date.fromisoformat(argv[2])
+    start, end = cli.date_range(__doc__, argv[1:])
     fetch_punishes(start, end)
     fetch_prices(start, end)
     return 0

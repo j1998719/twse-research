@@ -14,7 +14,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src.backtest import (
+from src import cli
+from src.disposition_study import (
     pre_release_run,
     shift_trading_day,
     trading_days,
@@ -73,6 +74,7 @@ def show(label: str, values: np.ndarray) -> None:
 
 def main() -> None:
     """跑完描述性與預測性兩段分析。"""
+    cli.no_args(__doc__)
     prices = pd.read_csv(OUT / "prices.csv", parse_dates=["day"])
     punishes = pd.read_csv(
         OUT / "punishes.csv", parse_dates=["announced", "start", "end"]

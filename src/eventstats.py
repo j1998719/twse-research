@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
 
-from src.market import ROUND_TRIP_COST_PCT
+from src.market import ROUND_TRIP_COST_PCT, limit_down, limit_up
 
 
 if TYPE_CHECKING:
@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 
 #: 一組少於這麼多筆就不做檢定,算出來也沒有意義
 MIN_GROUP = 4
+
+
+#: 浮點誤差的容忍度。價格和漲跌停價都是交易所檔位上的數字
+LIMIT_EPS = 1e-6
 
 
 def non_overlapping(positions: Sequence[int], horizon: int) -> list[int]:
@@ -209,6 +213,30 @@ def effective_n(items: Sequence[Observation]) -> int:
     return len({item.period for item in items})
 
 
+def tradable_on_or_after[DayT: SupportsAllComparisons](
+    series: dict[DayT, float], day: DayT, *, buying: bool
+) -> tuple[DayT, float] | None:
+    """當天或之後,第一個成交得了的日子與收盤價(#58)。
+
+    買進:收盤在漲停就買不到,順延到下一個有價格的日子;賣出:收盤在跌停就
+    賣不掉,一樣順延(Jordan 2026-10-07)。漲跌停用前一個有價格日子的收盤算 ——
+    停牌好幾天的話那是停牌前的收盤,跟交易所的參考價一樣。
+    """
+    ordered = sorted(series)
+    for i, d in enumerate(ordered):
+        if d < day:
+            continue
+        price = series[d]
+        prev = series[ordered[i - 1]] if i > 0 else None
+        if prev is not None and prev > 0:
+            if buying and price >= limit_up(prev) - LIMIT_EPS:
+                continue
+            if not buying and price <= limit_down(prev) + LIMIT_EPS:
+                continue
+        return d, price
+    return None
+
+
 def window_excess[DayT: SupportsAllComparisons](
     series: dict[DayT, float],
     closes: dict[str, dict[DayT, float]],
@@ -216,15 +244,26 @@ def window_excess[DayT: SupportsAllComparisons](
     exit_day: DayT,
     *,
     costs: bool = True,
+    defer_limits: bool = True,
 ) -> float | None:
     """一個窗口的超額報酬。兩端任一邊找不到價格就回 None。
 
     entry_day / exit_day 是「不早於這一天」—— 實際進出場是當天或之後最近的
-    交易日。基準是同一個窗口內整個宇集的買進持有等權報酬。
+    交易日。基準是同一個窗口內整個宇集的買進持有等權報酬,用的是**實際**
+    進出場那兩天。
+
+    defer_limits:進場那天收漲停就順延、出場那天收跌停也順延(#58)。順延到
+    出場日還買不到,或一路跌停到資料結束,就回 None —— 那筆成交不了,不是
+    報酬為 0。釘住舊數字的重現測試才關掉它。
     """
-    entry = first_on_or_after(series, entry_day)
-    out = first_on_or_after(series, exit_day)
-    if entry is None or out is None or entry[1] <= 0:
+    if defer_limits:
+        entry = tradable_on_or_after(series, entry_day, buying=True)
+        out = tradable_on_or_after(series, exit_day, buying=False)
+    else:
+        entry = first_on_or_after(series, entry_day)
+        out = first_on_or_after(series, exit_day)
+    # 買進順延到出場日之後:這一筆成交不了。同一天進出照舊算 0%
+    if entry is None or out is None or entry[1] <= 0 or entry[0] > out[0]:
         return None
     bench = equal_weight_buy_and_hold(closes, entry[0], out[0])
     if bench is None:

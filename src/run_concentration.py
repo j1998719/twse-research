@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from src import cli
 from src.eventdata import available_codes, load_closes, load_weeks
 from src.events.dispersion import events as dispersion_events
 from src.study import Event, Grouping, Spec, period_window, report, run_study
@@ -66,6 +67,7 @@ def rose(name: str) -> object:
 
 def main() -> int:
     """跑 10 個檢定。每個持有期是一個 Spec,因為窗口長度不同。"""
+    cli.no_args(__doc__)
     closes = load_closes()
     events: list[Event] = []
     weeks: set[object] = set()

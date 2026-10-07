@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src.backtest import event_rate, pre_release_run, summarise
+from src import cli
+from src.disposition_study import event_rate, pre_release_run, summarise
 from src.market import index_series, parse_exrights
 from src.regime import (
     CONTINUOUS_TRADING_FROM,
@@ -74,11 +75,12 @@ def report(label: str, values: np.ndarray, width: int = 22) -> None:
 
 def main() -> None:
     """分段跑完所有檢定並印出結果。"""
+    cli.no_args(__doc__)
     prices, punishes, index = load()
     runs = pre_release_run(punishes, prices, index)
     runs = runs[runs.excess.notna()]
     print(f"資料期間 {prices.day.min().date()} ~ {prices.day.max().date()}")
-    print(f"可回測的處置事件 {len(runs)} 筆\n")
+    print(f"納入研究的處置事件 {len(runs)} 筆\n")
 
     print("=" * 78)
     print("逐年:t-6 收盤買、出關前一日收盤賣,超額報酬(已扣成本與大盤)")

@@ -9,7 +9,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from src.backtest import Timing, pre_release_run
+from src.disposition_study import Timing, pre_release_run
 from src.market import limit_down
 
 
@@ -130,3 +130,95 @@ def test_能不能知道用原定的買進日判斷_不是順延後的() -> None
     )
     assert out.iloc[0]["buy_day"] == DAYS[3].date()
     assert not out.iloc[0]["knowable"]
+
+
+# ---- #58:其他事件研究路徑也要順延 ----
+
+
+def test_出關後才買_開盤漲停_順延到隔天開盤買() -> None:
+    from src.disposition_study import exit_returns
+
+    # D4 收 100 → D5(出關日)開盤 110 = 漲停,買不到 → D6 開盤 112 買
+    out = exit_returns(
+        PUNISH, _prices([100, 100, 100, 100, 100, 110, 112, 112]), horizons=(0, 1)
+    )
+    row = out.iloc[0]
+    assert row["entry_day"] == DAYS[6].date()
+    assert row["entry"] == 112
+    assert row["entry_deferred"] == 1
+    # 持有 0 天的賣點(D5)比實際買進還早:這一格沒有報酬,不是 0
+    assert pd.isna(row["g0"])
+    assert row["g1"] == 0.0
+
+
+def test_出關後才買_賣出日跌停_順延到隔天賣() -> None:
+    from src.disposition_study import exit_returns
+
+    # D5 開盤買 100;D5 收 90 = 跌停 → D6 收 85 才賣掉
+    prices = _prices([100, 100, 100, 100, 100, 90, 85, 85])
+    prices.loc[(prices.code == "1111") & (prices.day == DAYS[5]), "open"] = 100.0
+    out = exit_returns(PUNISH, prices, horizons=(0,))
+    row = out.iloc[0]
+    assert row["d0"] == 1
+    assert row["g0"] == -15.0
+
+
+def test_處置期間買_首日開盤漲停_順延() -> None:
+    from src.disposition_study import hold_through
+
+    punish = PUNISH.assign(start=DAYS[1].date())
+    out = hold_through(
+        punish, _prices([100, 110, 112, 112, 112, 112, 112, 112]), horizons=(0,)
+    )
+    row = out.iloc[0]
+    assert row["begin"] == DAYS[2].date()
+    assert row["entry"] == 112
+    assert row["entry_deferred"] == 1
+
+
+def test_事件研究框架_進場漲停_出場跌停_都順延() -> None:
+    from src.eventstats import window_excess
+
+    days = [d.date() for d in DAYS]
+    # D1 收漲停(前收 100)→ D2 才買到 111;D5 收跌停(前收 111)→ D6 才賣到 95
+    stock = dict(
+        zip(days, [100.0, 110.0, 111.0, 111.0, 111.0, 99.9, 95.0, 95.0], strict=True)
+    )
+    flat = dict.fromkeys(days, 50.0)
+    got = window_excess(
+        stock, {"1111": stock, "9999": flat}, days[1], days[5], costs=False
+    )
+    bench = ((95.0 / 111.0 - 1) * 100 + 0.0) / 2
+    assert got == pytest.approx((95.0 / 111.0 - 1) * 100 - bench)
+
+
+def test_事件研究框架_可以關掉順延_重現舊數字() -> None:
+    from src.eventstats import window_excess
+
+    days = [d.date() for d in DAYS]
+    stock = dict(
+        zip(days, [100.0, 110.0, 111.0, 111.0, 111.0, 99.9, 95.0, 95.0], strict=True)
+    )
+    flat = dict.fromkeys(days, 50.0)
+    got = window_excess(
+        stock,
+        {"1111": stock, "9999": flat},
+        days[1],
+        days[5],
+        costs=False,
+        defer_limits=False,
+    )
+    bench = ((99.9 / 110.0 - 1) * 100 + 0.0) / 2
+    assert got == pytest.approx((99.9 / 110.0 - 1) * 100 - bench)
+
+
+def test_事件研究框架_一路漲停買到出場日之後_算成交不了() -> None:
+    from src.eventstats import window_excess
+
+    days = [d.date() for d in DAYS]
+    # D1 起連續漲停到 D3,D4 才買得到;原定 D2 出場 → 沒有這一筆,不是 0
+    stock = dict(
+        zip(days, [100.0, 110.0, 121.0, 133.0, 134.0, 134.0, 134.0, 134.0], strict=True)
+    )
+    flat = dict.fromkeys(days, 50.0)
+    assert window_excess(stock, {"1111": stock, "9999": flat}, days[1], days[2]) is None

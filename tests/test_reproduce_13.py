@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backtest import Timing, pre_release_run, summarise, trading_days
+from src.disposition_study import Timing, pre_release_run, summarise, trading_days
 from src.events.disposition import events as disposition_events
 from src.eventstats import window_excess
 from src.market import index_series

@@ -3,12 +3,11 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from src.backtest import (
+from src.disposition_study import (
     Timing,
     as_number,
     exit_returns,
     next_trading_day,
-    opened_limit_up,
     shift_trading_day,
     summarise,
     trading_days,
@@ -21,7 +20,6 @@ DAYS = ["2026-01-01", "2026-01-02", "2026-01-06", "2026-01-07", "2026-01-09"]
 
 PRICES = pd.DataFrame(
     [
-        # 最低價刻意設得比開盤低,才不會被當成一開盤就鎖漲停
         {"day": d, "code": 1111, "open": o, "high": c, "low": o - 5, "close": c}
         for d, o, c in zip(
             DAYS, [100, 110, 120, 130, 140], [105, 115, 125, 135, 145], strict=True
@@ -62,25 +60,6 @@ class TestAsNumber:
     def test_缺值回None(self):
         assert as_number(None) is None
         assert as_number(float("nan")) is None
-
-
-class TestOpenedLimitUp:
-    def test_開盤就鎖漲停(self):
-        # 前收 100 -> 漲停 110,開盤和最低都在漲停
-        assert opened_limit_up(110.0, 110.0, 100.0)
-
-    def test_開漲停但盤中有跌回來就買得到(self):
-        assert not opened_limit_up(110.0, 105.0, 100.0)
-
-    def test_沒到漲停(self):
-        assert not opened_limit_up(108.0, 105.0, 100.0)
-
-    def test_沒有前收盤時不判定(self):
-        assert not opened_limit_up(110.0, 110.0, None)
-
-    def test_檔位取整後仍算漲停(self):
-        # 前收 101 -> 101×1.1 = 111.1,漲停取 111.0
-        assert opened_limit_up(111.0, 111.0, 101.0)
 
 
 class TestExitReturns:
@@ -188,7 +167,7 @@ class TestCostAndBenchmark:
 
 class TestExrights:
     def test_持有期內有除權息就標出來(self):
-        from src.backtest import flag_exrights
+        from src.disposition_study import flag_exrights
 
         returns = pd.DataFrame([{"code": 1111, "release": date(2026, 1, 6)}])
         # 1/7 除權息,落在持有 3 日的窗內
@@ -196,14 +175,14 @@ class TestExrights:
         assert flag_exrights(returns, PRICES, ex, horizon=3).iloc[0]
 
     def test_除權息在窗外就不標(self):
-        from src.backtest import flag_exrights
+        from src.disposition_study import flag_exrights
 
         returns = pd.DataFrame([{"code": 1111, "release": date(2026, 1, 6)}])
         ex = {(date(2026, 1, 9), "1111")}
         assert not flag_exrights(returns, PRICES, ex, horizon=1).iloc[0]
 
     def test_別檔股票的除權息不算(self):
-        from src.backtest import flag_exrights
+        from src.disposition_study import flag_exrights
 
         returns = pd.DataFrame([{"code": 1111, "release": date(2026, 1, 6)}])
         ex = {(date(2026, 1, 7), "9999")}
@@ -225,14 +204,14 @@ class TestHoldThrough:
     )
 
     def test_進場是處置首日開盤(self):
-        from src.backtest import hold_through
+        from src.disposition_study import hold_through
 
         out = hold_through(self.punishes, PRICES, horizons=(0,))
         assert out.iloc[0]["begin"] == date(2026, 1, 2)
         assert out.iloc[0]["entry"] == 110.0
 
     def test_出場是出關日收盤(self):
-        from src.backtest import hold_through
+        from src.disposition_study import hold_through
 
         out = hold_through(self.punishes, PRICES, horizons=(0,))
         # 1/6 結束 -> 1/7 出關,收盤 135;1/2 開盤 110 買
@@ -240,14 +219,14 @@ class TestHoldThrough:
         assert out.iloc[0]["g0"] == round((135 / 110 - 1) * 100, 2)
 
     def test_處置首日不是交易日就往後找(self):
-        from src.backtest import hold_through
+        from src.disposition_study import hold_through
 
         weekend = self.punishes.assign(start=[date(2026, 1, 3)])
         out = hold_through(weekend, PRICES, horizons=(0,))
         assert out.iloc[0]["begin"] == date(2026, 1, 6)
 
     def test_多抱幾天(self):
-        from src.backtest import hold_through
+        from src.disposition_study import hold_through
 
         out = hold_through(self.punishes, PRICES, horizons=(0, 1))
         # 出關日後一個交易日是 1/9,收盤 145
@@ -269,7 +248,7 @@ class TestPreReleaseRun:
     )
 
     def test_出場是出關前一個交易日(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         # 1/6 結束 -> 1/7 出關,前一個交易日是 1/6
         out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
@@ -278,7 +257,7 @@ class TestPreReleaseRun:
         assert out.iloc[0]["buy_day"] == date(2026, 1, 2)
 
     def test_用收盤價進出(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         # 1/2 收盤 115 買,1/6 收盤 125 賣
@@ -287,7 +266,7 @@ class TestPreReleaseRun:
         assert out.iloc[0]["gross"] == round((125 / 115 - 1) * 100, 2)
 
     def test_淨報酬扣成本(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["gross"] - out.iloc[0]["net"] == pytest.approx(
@@ -295,7 +274,7 @@ class TestPreReleaseRun:
         )
 
     def test_往前數超出資料範圍就略過(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         assert pre_release_run(
             self.punishes, PRICES, timing=Timing(entry=-99, exit=-1)
@@ -320,7 +299,7 @@ class TestShiftBounds:
 
 class TestEventRate:
     def test_頻率計算(self):
-        from src.backtest import event_rate
+        from src.disposition_study import event_rate
 
         # 兩個月內 6 件
         days = pd.to_datetime(
@@ -340,12 +319,12 @@ class TestEventRate:
         assert got["有事件的月份數"] == 3
 
     def test_空的回空字典(self):
-        from src.backtest import event_rate
+        from src.disposition_study import event_rate
 
         assert event_rate(pd.DataFrame({"buy_day": []})) == {}
 
     def test_每月平均與涵蓋天數一致(self):
-        from src.backtest import event_rate
+        from src.disposition_study import event_rate
 
         days = pd.to_datetime(["2026-01-01", "2026-02-01", "2026-03-01"])
         got = event_rate(pd.DataFrame({"buy_day": days}))
@@ -369,7 +348,7 @@ class TestPriceConvention:
     )
 
     def test_可以指定用開盤價進出(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(
             self.punishes,
@@ -381,7 +360,7 @@ class TestPriceConvention:
         assert out.iloc[0]["sell"] == 120.0
 
     def test_兩邊混用(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(
             self.punishes, PRICES, timing=Timing(entry=-2, exit=-1, entry_price="open")
@@ -391,7 +370,7 @@ class TestPriceConvention:
         assert out.iloc[0]["sell"] == 125.0
 
     def test_預設兩邊都是收盤(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(self.punishes, PRICES, timing=Timing(entry=-2, exit=-1))
         assert out.iloc[0]["buy"] == 115.0
@@ -417,7 +396,7 @@ class TestLookAhead:
         )
 
     def test_公告早於進場日就是合法的(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         # 出關日 1/7,t-2 = 1/2;公告在 1/1,早於進場
         out = pre_release_run(
@@ -426,7 +405,7 @@ class TestLookAhead:
         assert out.iloc[0]["knowable"]
 
     def test_公告當天買進要標記出來(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(
             self.make(date(2026, 1, 2)), PRICES, timing=Timing(entry=-2, exit=-1)
@@ -434,7 +413,7 @@ class TestLookAhead:
         assert not out.iloc[0]["knowable"]
 
     def test_公告晚於進場日更不合法(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(
             self.make(date(2026, 1, 6)), PRICES, timing=Timing(entry=-2, exit=-1)
@@ -442,7 +421,7 @@ class TestLookAhead:
         assert not out.iloc[0]["knowable"]
 
     def test_沒有公告欄位時不判定(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         no_col = self.make(date(2026, 1, 1)).drop(columns=["announced"])
         out = pre_release_run(no_col, PRICES, timing=Timing(entry=-2, exit=-1))
@@ -451,7 +430,7 @@ class TestLookAhead:
 
 class TestWinLoss:
     def test_賺賠分開統計(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         df = pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0, None]})
         got = win_loss(df, "x")
@@ -463,21 +442,21 @@ class TestWinLoss:
         assert got["勝率%"] == 50.0
 
     def test_賺賠比(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         # 賺的平均 15,賠的平均 10,比值 1.5
         got = win_loss(pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0]}), "x")
         assert got["賺賠比"] == 1.5
 
     def test_期望值(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         # 勝率五成、賺的時候平均 15、賠的時候平均 10,期望值是 2.5
         got = win_loss(pd.DataFrame({"x": [10.0, 20.0, -5.0, -15.0]}), "x")
         assert got["期望值%"] == 2.5
 
     def test_勝率高但期望值可以是負的(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         # 四次裡贏三次,但輸那次賠掉所有獲利 —— 勝率高不等於賺錢
         got = win_loss(pd.DataFrame({"x": [1.0, 1.0, 1.0, -10.0]}), "x")
@@ -485,14 +464,14 @@ class TestWinLoss:
         assert got["期望值%"] < 0
 
     def test_全賺時沒有賠的欄位(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         got = win_loss(pd.DataFrame({"x": [1.0, 2.0]}), "x")
         assert "賠_平均%" not in got
         assert "賺賠比" not in got
 
     def test_零不算賺也不算賠(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         got = win_loss(pd.DataFrame({"x": [0.0, 5.0, -5.0]}), "x")
         assert got["賺_筆數"] == 1
@@ -500,7 +479,7 @@ class TestWinLoss:
         assert got["全部_樣本"] == 3
 
     def test_空的回空字典(self):
-        from src.backtest import win_loss
+        from src.disposition_study import win_loss
 
         assert win_loss(pd.DataFrame({"x": [None]}), "x") == {}
 
@@ -527,7 +506,7 @@ class TestOverlappingDisposition:
     }
 
     def test_沒有重疊時是真的出關(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         out = pre_release_run(
             pd.DataFrame([self.first]), PRICES, timing=Timing(entry=-2, exit=-1)
@@ -536,7 +515,7 @@ class TestOverlappingDisposition:
         assert out.iloc[0]["truly_released"]
 
     def test_出關日被另一段處置蓋住就是假出關(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         both = pd.DataFrame([self.first, self.overlapping])
         out = pre_release_run(both, PRICES, timing=Timing(entry=-2, exit=-1))
@@ -544,7 +523,7 @@ class TestOverlappingDisposition:
         assert not out.iloc[0]["truly_released"]
 
     def test_可以另外指定完整的處置清單(self):
-        from src.backtest import pre_release_run
+        from src.disposition_study import pre_release_run
 
         # 只回測第一筆,但用完整清單判斷有沒有被蓋住
         out = pre_release_run(

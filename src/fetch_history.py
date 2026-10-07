@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import csv
 import sys
-from datetime import date
 from pathlib import Path
 
+from src import cli
 from src.fetch_prices import RAW as TWSE_RAW
 from src.fetch_tpex import RAW as TPEX_RAW
 from src.prices import fetch_day, parse_day, weekdays
@@ -23,15 +23,11 @@ from src.tpex import cached_quotes, parse_quotes
 
 
 OUT = Path("data/out/long_prices.csv")
-ARGC = 3
 
 
 def main(argv: list[str]) -> int:
     """逐日抓兩個市場。單日失敗記下來,最後回報。"""
-    if len(argv) != ARGC:
-        print(__doc__, file=sys.stderr)
-        return 2
-    days = weekdays(date.fromisoformat(argv[1]), date.fromisoformat(argv[2]))
+    days = weekdays(*cli.date_range(__doc__, argv[1:]))
     failed: list[str] = []
     rows = 0
     OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -15,8 +15,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src import holidays
-from src.backtest import (
+from src import cli, holidays
+from src.capital import capital_run
+from src.disposition_study import (
     PRE_RELEASE_ENTRY,
     Book,
     Timing,
@@ -30,7 +31,6 @@ from src.backtest import (
     trading_days,
     win_loss,
 )
-from src.capital import capital_run
 from src.market import ROUND_TRIP_COST_PCT, index_series
 from src.regime import MARKET_REGIMES, slice_by
 from src.universe import all_prices, all_punishes
@@ -387,7 +387,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
         "years": years,
         "exits": exits,
         "caps": caps,
-        "afterRelease": summarise(after[~after.locked_up], "x5"),
+        "afterRelease": summarise(after, "x5"),
         "rate": event_rate(runs),
         "binomial": _binomial(years),
         "monthly": [
@@ -492,6 +492,7 @@ def _by_market(
 
 def main() -> None:
     """產生 report.json。"""
+    cli.no_args(__doc__)
     report = build(pd.Timestamp.today().normalize())
     path = OUT / "report.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from src import cli
 from src.tdcc import fetch_snapshot, snapshot_day
 
 
@@ -19,6 +20,7 @@ ARCHIVE = Path("data/raw/tdcc")
 
 def main() -> int:
     """抓一份快照存起來。已經有同一個資料日期的檔案就不動它。"""
+    cli.no_args(__doc__)
     text = fetch_snapshot()
     day = snapshot_day(text)
     if day is None:

@@ -11,24 +11,20 @@ from __future__ import annotations
 import csv
 import sys
 from dataclasses import asdict, fields
-from datetime import date
 from pathlib import Path
 
+from src import cli
 from src.chips import Chips, fetch_otc_chips, parse_otc_chips
 from src.prices import weekdays
 
 
 RAW = Path("data/raw/chips")
 OUT = Path("data/out/otc_chips.csv")
-ARGC = 3
 
 
 def main(argv: list[str]) -> int:
     """逐日抓。有失敗的日子回 1。"""
-    if len(argv) != ARGC:
-        print(__doc__, file=sys.stderr)
-        return 2
-    days = weekdays(date.fromisoformat(argv[1]), date.fromisoformat(argv[2]))
+    days = weekdays(*cli.date_range(__doc__, argv[1:]))
     failed: list[str] = []
     rows = 0
     OUT.parent.mkdir(parents=True, exist_ok=True)

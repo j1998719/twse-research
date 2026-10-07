@@ -1,6 +1,17 @@
-"""處置股出關後的報酬統計。
+"""處置股的事件研究:每一次處置單獨算報酬。
 
-進場假設:出關後第一個交易日「開盤買進」。這是最保守的假設 ——
+**這不是回測。** 這裡每一筆事件獨立計算、互不影響 —— 沒有帳戶、沒有資金上限、
+沒有每日淨值,所以算不出最大回檔或「多久沒創新高」(#33)。組合層級的東西
+目前只有 capital.py 的雛形(資金上限,但沒有每日淨值)。以前叫 backtest.py,
+名字會讓人以為已經有回測系統,所以改名(#58)。
+
+三條路徑,買進日漲停、賣出日跌停都順延到下一個交易日(Jordan 2026-10-07,#45、#58):
+
+- pre_release_run:處置後半段買、出關前一日賣(主要發現)
+- exit_returns:出關後才買
+- hold_through:處置期間買、出關後賣
+
+exit_returns 的進場假設:出關後第一個交易日「開盤買進」。這是最保守的假設 ——
 處置期間不能當沖、盤中只有集合競價,散戶實際上很難拿到比開盤更好的價格。
 """
 
@@ -64,19 +75,6 @@ def build_panels(prices: pd.DataFrame) -> dict[str, pd.DataFrame]:
     }
 
 
-def opened_limit_up(
-    open_px: float, low: float | None, prev_close: float | None
-) -> bool:
-    """一開盤就鎖漲停 —— 這種情況散戶通常買不到。
-
-    條件是開盤價已達漲停,而且盤中沒有跌回漲停之下(low 也在漲停價)。
-    """
-    if prev_close is None or prev_close <= 0:
-        return False
-    cap = limit_up(prev_close)
-    return open_px >= cap - 1e-9 and (low is None or low >= cap - 1e-9)
-
-
 def _index_return(
     index: dict[date, float], start: pd.Timestamp, end: pd.Timestamp
 ) -> float | None:
@@ -101,26 +99,56 @@ def _horizon_row(
     view: PriceView,
     code: object,
     release: pd.Timestamp,
-    base: pd.Timestamp,
+    bought: pd.Timestamp,
     entry: float,
     horizon: int,
-) -> dict[str, float | None]:
-    """某個持有天數的毛報酬、扣成本後、以及扣掉大盤之後的超額。"""
+) -> dict[str, float | int | None]:
+    """某個持有天數的毛報酬、扣成本後、扣掉大盤之後的超額,以及賣出順延幾天。
+
+    原定在出關日 + horizon 收盤賣;那天收跌停賣不掉就順延到下一個交易日(#58)。
+    原定賣出日比實際買進日還早(買進因漲停順延過頭了),這一格就沒有報酬。
+    """
+    empty: dict[str, float | int | None] = {
+        f"g{horizon}": None,
+        f"n{horizon}": None,
+        f"x{horizon}": None,
+        f"d{horizon}": None,
+    }
     target = shift_trading_day(view.days, release, horizon)
-    if target is None or target not in view.close.index:
-        return {f"g{horizon}": None, f"n{horizon}": None, f"x{horizon}": None}
-    out = as_number(view.close.at[target, code])
+    if target is None or target not in view.close.index or target < bought:
+        return empty
+    book = Book(view.days, view.close, view.close)
+    sold = tradable_from(book, code, target, None, buying=False)
+    if sold is None:
+        return empty
+    out = as_number(view.close.at[sold, code])
     if out is None:
-        return {f"g{horizon}": None, f"n{horizon}": None, f"x{horizon}": None}
+        return empty
 
     gross = (out / entry - 1) * 100
     net = gross - ROUND_TRIP_COST_PCT
-    market = _index_return(view.index, base, target)
+    # 進場是開盤,所以大盤基準從買進前一個交易日的收盤算起
+    base = shift_trading_day(view.days, bought, -1) or bought
+    market = _index_return(view.index, base, sold)
     return {
         f"g{horizon}": round(gross, 2),
         f"n{horizon}": round(net, 2),
         f"x{horizon}": None if market is None else round(net - market, 2),
+        f"d{horizon}": _pos(view.days, sold) - _pos(view.days, target),
     }
+
+
+def _bought(
+    view: PriceView, open_px: pd.DataFrame, code: object, planned: pd.Timestamp
+) -> tuple[pd.Timestamp, float] | None:
+    """原定 planned 開盤買;開盤在漲停就順延到下一個交易日開盤(#58)。"""
+    day = tradable_from(
+        Book(view.days, open_px, view.close), code, planned, None, buying=True
+    )
+    if day is None:
+        return None
+    price = as_number(open_px.at[day, code])
+    return None if price is None or price <= 0 else (day, price)
 
 
 def exit_returns(
@@ -133,11 +161,15 @@ def exit_returns(
 
     第 0 天 = 出關日當天開盤買、收盤賣。三種報酬:
     g = 毛報酬、n = 扣掉來回交易成本、x = 再扣掉大盤同期漲跌(超額報酬)。
+    d = 賣出因跌停順延了幾天。
+
+    出關日開盤就漲停的話買不到,順延到下一個交易日開盤(#58)。以前是把
+    「一開盤就鎖漲停」的樣本整筆排除,現在照跟主要發現一樣的規則順延。
     """
     index = index or {}
     days = trading_days(prices)
     panels = build_panels(prices)
-    open_px, low_px, close_px = panels["open"], panels["low"], panels["close"]
+    open_px, close_px = panels["open"], panels["close"]
     view = PriceView(days=days, close=close_px, index=index)
 
     records: list[dict[str, object]] = []
@@ -148,18 +180,10 @@ def exit_returns(
             continue
         if release not in open_px.index:
             continue
-        entry = as_number(open_px.at[release, code])
-        if entry is None or entry <= 0:
+        found = _bought(view, open_px, code, release)
+        if found is None:
             continue
-
-        # 出關前一個交易日的收盤,用來算漲停價和大盤基準
-        base = shift_trading_day(days, release, -1)
-        prev_close = (
-            as_number(close_px.at[base, code])
-            if base is not None and base in close_px.index
-            else None
-        )
-        locked = opened_limit_up(entry, as_number(low_px.at[release, code]), prev_close)
+        bought, entry = found
 
         record: dict[str, object] = {
             "code": code,
@@ -169,23 +193,14 @@ def exit_returns(
             "start": raw["start"],
             "end": raw["end"],
             "release": release.date(),
+            "entry_day": bought.date(),
             "entry": entry,
-            "prev_close": prev_close,
-            # 一開盤就鎖漲停,散戶買不到 —— 這種樣本要排除,不然會高估報酬
-            "locked_up": locked,
+            #: 出關日開盤漲停,順延了幾個交易日才買到。0 = 照原定出關日開盤買
+            "entry_deferred": _pos(days, bought) - _pos(days, release),
             "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
         }
         for horizon in horizons:
-            record.update(
-                _horizon_row(
-                    view,
-                    code,
-                    release,
-                    base if base is not None else release,
-                    entry,
-                    horizon,
-                )
-            )
+            record.update(_horizon_row(view, code, release, bought, entry, horizon))
         records.append(record)
 
     return pd.DataFrame(records)
@@ -245,31 +260,27 @@ def hold_through(
 
     進場是處置首日開盤 —— 關禁閉期間仍然可以交易,只是改成集合競價。
     出場分兩段:出關日收盤(horizon 0),以及再多抱 N 個交易日。
+    進場漲停、出場跌停都順延,跟其他兩條路徑同一套規則(#58)。
     賭的是流動性被人為壓縮時價格偏低,恢復之後回彈。
     """
     index = index or {}
     days = trading_days(prices)
     panels = build_panels(prices)
-    open_px, low_px, close_px = panels["open"], panels["low"], panels["close"]
+    open_px, close_px = panels["open"], panels["close"]
     view = PriceView(days=days, close=close_px, index=index)
 
     records: list[dict[str, object]] = []
     for raw in punishes.to_dict("records"):
         code = raw["code"]
-        begin = _first_trading_day(days, pd.Timestamp(str(raw["start"])))
+        planned = _first_trading_day(days, pd.Timestamp(str(raw["start"])))
         release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
-        if begin is None or release is None or code not in open_px.columns:
+        if planned is None or release is None or code not in open_px.columns:
             continue
-        entry = as_number(open_px.at[begin, code])
-        if entry is None or entry <= 0:
+        # 處置首日開盤漲停就順延(#58);順延到出關日還買不到就沒有這一筆
+        found = _bought(view, open_px, code, planned)
+        if found is None or found[0] > release:
             continue
-
-        before = shift_trading_day(days, begin, -1)
-        prev_close = (
-            as_number(close_px.at[before, code])
-            if before is not None and before in close_px.index
-            else None
-        )
+        begin, entry = found
         record: dict[str, object] = {
             "code": code,
             "name": str(raw["name"]),
@@ -279,14 +290,11 @@ def hold_through(
             "begin": begin.date(),
             "release": release.date(),
             "entry": entry,
-            "locked_up": opened_limit_up(
-                entry, as_number(low_px.at[begin, code]), prev_close
-            ),
+            "entry_deferred": _pos(days, begin) - _pos(days, planned),
             "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
         }
-        base = before if before is not None else begin
         for horizon in horizons:
-            record.update(_horizon_row(view, code, release, base, entry, horizon))
+            record.update(_horizon_row(view, code, release, begin, entry, horizon))
         records.append(record)
 
     return pd.DataFrame(records)

@@ -119,7 +119,7 @@ def resolve_window(
     entry, exit_ = days[entry_at], days[exit_at]
     # 嚴格晚於,不是「不早於」。knowable 是**資訊公開的那一天**,而公告多半
     # 是盤後發布 —— 在公告日收盤買進等於在公告出來前就知道它會發生。
-    # backtest.pre_release_run 用的也是嚴格不等式(buy_day > announced),
+    # disposition_study.pre_release_run 用的也是嚴格不等式(buy_day > announced),
     # 兩邊的語意必須一致。
     if entry <= event.knowable:
         return None

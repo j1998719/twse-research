@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import csv
-import sys
 from dataclasses import asdict, fields
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+from src import cli
 from src.twse import (
     NOTICE_URL,
     PUNISH_URL,
@@ -54,8 +54,7 @@ def write_csv(rows: list[Any], path: Path) -> None:
 
 def main() -> None:
     """抓取指定期間的注意股與處置股並輸出 CSV。"""
-    start = date.fromisoformat(sys.argv[1])
-    end = date.fromisoformat(sys.argv[2])
+    start, end = cli.date_range(__doc__)
 
     notices: list[Notice] = []
     punishes: list[Punish] = []

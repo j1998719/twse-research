@@ -14,6 +14,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+from src import cli
 from src.tdcc import BIG_BAND, available_weeks, fetch_week
 
 
@@ -22,8 +23,6 @@ ARCHIVE = Path("data/raw/tdcc/history")
 RETRIES = 4
 #: 每個請求之間歇一下,不要打人家的站
 PAUSE = 0.8
-#: 命令列參數個數:程式名 + 清單檔
-ARGC = 2
 
 
 def _as_date(stamp: str) -> date:
@@ -83,14 +82,13 @@ def fetch_code(code: str, weeks: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    """用法:python -m src.fetch_dispersion <代號清單檔>"""
-    if len(argv) != ARGC:
-        print(__doc__, file=sys.stderr)
-        print("用法:python -m src.fetch_dispersion <代號清單檔>", file=sys.stderr)
-        return 2
+    """一行一個代號的清單檔 → 每一檔的股權分散歷史。"""
+    p = cli.parser(__doc__)
+    p.add_argument("codes", type=Path, help="代號清單檔,一行一個代號")
+    args = p.parse_args(argv[1:])
     codes = [
         line.strip()
-        for line in Path(argv[1]).read_text(encoding="utf-8").splitlines()
+        for line in args.codes.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     weeks = [f"{d:%Y%m%d}" for d in available_weeks()]

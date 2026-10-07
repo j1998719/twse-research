@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from src.backtest import pre_release_run, trading_days
+from src import cli
+from src.disposition_study import pre_release_run, trading_days
 from src.events.disposition import events as disposition_events
 from src.eventstats import clustered_ci, window_excess
 from src.market import index_series
@@ -51,6 +52,7 @@ def closes_by_code(prices: pd.DataFrame) -> dict[str, dict[date, float]]:
 
 def main() -> int:
     """跑全市場,並分市場報。"""
+    cli.no_args(__doc__)
     prices = all_prices()
     punishes = all_punishes()
     if prices.empty or punishes.empty:

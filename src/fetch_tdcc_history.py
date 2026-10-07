@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import argparse
 import http.client
 import json
 import sys
@@ -25,6 +24,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src import cli
 from src.fetch_tdcc import ARCHIVE
 from src.tdcc import available_weeks, fetch_week, parse_snapshot, snapshot_day
 from src.tpex import is_common_stock
@@ -137,9 +137,7 @@ def backfill(
 
 def main(argv: list[str]) -> int:
     """在時間額度內盡量補。補完或時間到都回 0;查詢頁打不開回 1。"""
-    parser = argparse.ArgumentParser(
-        prog="fetch_tdcc_history", description="往回補集保單檔股權分散表"
-    )
+    parser = cli.parser(__doc__)
     parser.add_argument("--weeks", type=int, default=8, help="往回補幾週(含最新一週)")
     parser.add_argument("--minutes", type=float, default=30, help="這一次最多花幾分鐘")
     parser.add_argument("--pause", type=float, default=0.5, help="每個股票週之間停幾秒")

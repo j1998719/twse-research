@@ -349,7 +349,8 @@ class TestWindowExcess:
         assert plain - costed == pytest.approx(ROUND_TRIP_COST_PCT)
 
     def test_指定的日期沒開盤就用之後最近的(self) -> None:
-        sparse = {D(1): 100.0, D(5): 120.0}
+        # 105 而不是 120:漲幅超過 10% 會被當成漲停買不到(#58),這裡只測日期往後滑
+        sparse = {D(1): 100.0, D(5): 105.0}
         closes = {"x": sparse}
         got = window_excess(sparse, closes, D(2), D(4), costs=False)
         # 進場滑到 D(5)、出場也滑到 D(5),同一天進出 = 0%
