@@ -15,19 +15,18 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from src import cli
+from src.adjust import adjusted_closes
 from src.disposition_study import pre_release_run, trading_days
 from src.liquidity import chain_levels
 from src.market import index_series
 from src.portfolio import drawdown, losing_streak, simulate, underwater_days
-from src.universe import all_prices, all_punishes
+from src.universe import all_actions, all_prices, all_punishes
 
 
 if TYPE_CHECKING:
     from datetime import date
 
 RAW = Path("data/raw")
-#: 除權息、減資、變更面額(fetch_actions)。持有期間遇到的交易,報酬是用未還原股價算的
-ACTIONS = Path("data/out/corporate_actions.csv")
 #: 本金分檔(#33 事前寫下的)
 CAPITALS = (1_000_000, 3_000_000, 10_000_000, 30_000_000)
 SECOND = 2
@@ -60,8 +59,8 @@ def _benchmark(index: dict[date, float], days: pd.DatetimeIndex) -> pd.Series:
 def touched_by_actions(runs: pd.DataFrame, actions: pd.DataFrame) -> pd.Series:
     """持有期間(買進日之後、賣出日當天以前)有沒有股本事件。
 
-    事件研究的報酬用未還原股價算(#59):除息讓報酬偏低,減資讓股價跳上去變成
-    假獲利。還原之前,用「排除這些交易」當敏感度檢查。
+    報酬已經還原過(#59)。這裡另外標出來,做「整筆拿掉」的敏感度檢查 ——
+    還原因子本身有沒有漏(像 5314 那樣)會在這裡現形。
     """
     by_code: dict[str, list[pd.Timestamp]] = {}
     for code, day in zip(actions.code.astype(str), actions.day, strict=True):
@@ -80,10 +79,20 @@ def main() -> int:
     punishes = all_punishes()
     index = index_series(RAW / "prices")
     numbered = punishes[punishes.nth > 0]
-    raw = pre_release_run(numbered, prices, index, all_punishes=punishes)
+    actions = all_actions()
+    raw = pre_release_run(
+        numbered, prices, index, all_punishes=punishes, actions=actions
+    )
     runs = raw[raw.knowable & raw.truly_released & raw.excess.notna()]
-    closes = prices.pivot_table(index="day", columns="code", values="close")
-    closes.columns = closes.columns.astype(str)
+    # 市值用還原收盤:除息那天淨值不會憑空掉一截、減資不會憑空漲一截(#59)
+    marks = prices[["code", "day", "close"]].assign(code=prices.code.astype(str))
+    if actions is not None:
+        marks = (
+            adjusted_closes(marks, actions)
+            .drop(columns="close")
+            .rename(columns={"adj_close": "close"})
+        )
+    closes = marks.pivot_table(index="day", columns="code", values="close")
     days = pd.DatetimeIndex(closes.index)
 
     bench = _benchmark(index, days)
@@ -104,10 +113,16 @@ def main() -> int:
             for c, st in zip(runs.code, runs.start, strict=True)
         ]
     ]
-    actions = pd.read_csv(ACTIONS, dtype={"code": str}, parse_dates=["day"])
-    touched = touched_by_actions(runs, actions)
+    touched = (
+        touched_by_actions(runs, actions)
+        if actions is not None
+        else pd.Series(False, index=runs.index)
+    )
     clean = runs[~touched]
-    print(f"持有期間遇到股本事件的交易 {int(touched.sum())} 筆;敏感度檢查會把它們拿掉")
+    print(
+        f"持有期間遇到股本事件的交易 {int(touched.sum())} 筆:報酬已還原(#59),"
+        "敏感度檢查再把它們整筆拿掉看結論變不變"
+    )
     samples = (
         ("全部", runs),
         ("第二次處置", runs[runs.nth == SECOND]),

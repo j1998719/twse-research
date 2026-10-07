@@ -22,6 +22,7 @@ from src.disposition_study import (
     win_loss,
 )
 from src.market import index_series
+from src.universe import all_actions
 
 
 OUT = Path("data/out")
@@ -83,7 +84,9 @@ def main() -> None:
     index = index_series(RAW / "prices")
     days = trading_days(prices)
 
-    runs = pre_release_run(punishes[punishes.nth > 0], prices, index)
+    runs = pre_release_run(
+        punishes[punishes.nth > 0], prices, index, actions=all_actions()
+    )
     runs = runs[runs.knowable & runs.excess.notna()].copy()
     print(
         f"處置事件 {len(runs)} 筆,法人資料 {chips.day.min().date()} ~ {chips.day.max().date()}\n"

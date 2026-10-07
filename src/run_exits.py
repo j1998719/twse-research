@@ -20,7 +20,7 @@ from statsmodels.stats.multitest import multipletests
 from src import cli
 from src.disposition_study import exit_rule, pre_release_run, win_loss
 from src.market import index_series
-from src.universe import all_prices, all_punishes
+from src.universe import all_actions, all_prices, all_punishes
 
 
 RAW = Path("data/raw")
@@ -52,7 +52,10 @@ def main() -> int:
     punishes = all_punishes()
     index = index_series(RAW / "prices")
     numbered = punishes[punishes.nth > 0]
-    raw = pre_release_run(numbered, prices, index, all_punishes=punishes)
+    actions = all_actions()
+    raw = pre_release_run(
+        numbered, prices, index, all_punishes=punishes, actions=actions
+    )
     runs = raw[raw.knowable & raw.truly_released & raw.excess.notna()]
     base = runs.excess.astype(float)
     print(f"頭條樣本 {len(runs)} 筆(t−6 收盤買、t−1 收盤賣、漲跌停順延)\n")
@@ -61,7 +64,7 @@ def main() -> int:
 
     results = []
     for label, stop, take in RULES:
-        out = exit_rule(runs, prices, index, stop=stop, take=take)
+        out = exit_rule(runs, prices, index, stop=stop, take=take, actions=actions)
         both = pd.concat(
             [base, out.excess.astype(float)], axis=1, keys=["b", "r"]
         ).dropna()

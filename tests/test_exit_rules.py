@@ -102,3 +102,17 @@ def test_輸出的索引跟_runs_一樣_成對比較才對得上() -> None:
     runs = pre_release_run(PUNISH, prices)
     runs.index = pd.Index([42])
     assert list(exit_rule(runs, prices, stop=0.05).index) == [42]
+
+
+def test_停損用還原後的漲跌判斷_除息不會誤觸發() -> None:
+    # D4 除息(因子 0.9),收盤從 100 掉到 92:原始價看是 −8% 會觸發 5% 停損,
+    # 還原後是 92 / 90 = +2.2%,不該觸發
+    closes = FLAT.copy()
+    for i in range(4, 12):
+        closes[i] = 92.0
+    prices = _prices(closes)
+    actions = pd.DataFrame({"code": ["1111"], "day": [DAYS[4]], "factor": [0.9]})
+    runs = pre_release_run(PUNISH, prices, actions=actions)
+    row = exit_rule(runs, prices, stop=0.05, actions=actions).iloc[0]
+    assert not row["triggered"]
+    assert row["gross"] == pytest.approx((92 / 90 - 1) * 100, abs=0.01)

@@ -40,6 +40,8 @@ class Position:
     sell_day: pd.Timestamp
     buy: float
     sell: float
+    #: 賣出時的報酬倍數(賣價 / 還原後買價)。事件研究算好的,已還原除權息(#59)
+    ratio: float
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,11 @@ def _positions(trades: pd.DataFrame) -> dict[pd.Timestamp, list[Position]]:
             sell_day=pd.Timestamp(str(row["sell_day"])),
             buy=float(row["buy"]),
             sell=float(row["sell"]),
+            ratio=(
+                1 + float(row["gross"]) / 100
+                if "gross" in row
+                else float(row["sell"]) / float(row["buy"])
+            ),
         )
         out.setdefault(pos.buy_day, []).append(pos)
     for group in out.values():
@@ -78,8 +85,11 @@ def simulate(
 ) -> Portfolio:
     """照日曆跑一遍。
 
-    trades 要有 code、buy_day、sell_day、buy、sell;closes 是 交易日 × 代號 的收盤寬表
-    (欄名是字串代號)。
+    trades 要有 code、buy_day、sell_day、buy、sell,有 gross(事件研究的毛報酬 %)
+    就用它;closes 是 交易日 × 代號 的收盤寬表(欄名是字串代號)。
+
+    持股市值 = 買進金額 × 當天收盤 / 買進日收盤。closes 給還原收盤的話,
+    除息那天淨值不會憑空掉一截(股息算回來),減資也不會憑空漲一截(#59)。
     """
     marks = closes.sort_index().ffill()
     days = pd.DatetimeIndex(marks.index)
@@ -90,14 +100,17 @@ def simulate(
 
     cash = float(capital)
     held: list[Position] = []
+    #: 每個部位買進那天在 days 裡的位置。市值是相對於那天收盤的漲跌
+    base: dict[Position, int] = {}
     pnls: list[float] = []
     taken = skipped = most = 0
     equity: list[float] = []
     for i, day in enumerate(days):
         # 先賣:收盤賣掉的錢,當天收盤就能再用
         for pos in [p for p in held if p.sell_day == day]:
-            cash += pos.sell * lot * keep
-            pnls.append(pos.sell * lot * keep - pos.buy * lot)
+            proceeds = pos.buy * lot * pos.ratio * keep
+            cash += proceeds
+            pnls.append(proceeds - pos.buy * lot)
             held.remove(pos)
         # 再買:錢不夠買 1 張就跳過這個訊號
         for pos in by_buy.get(day, []):
@@ -106,9 +119,16 @@ def simulate(
                 continue
             cash -= pos.buy * lot
             held.append(pos)
+            base[pos] = i
             taken += 1
         most = max(most, len(held))
-        value = sum(float(prices[i, column[p.code]]) * lot for p in held)
+        value = sum(
+            p.buy
+            * lot
+            * float(prices[i, column[p.code]])
+            / float(prices[base[p], column[p.code]])
+            for p in held
+        )
         equity.append(cash + value)
 
     return Portfolio(

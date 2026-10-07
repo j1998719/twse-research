@@ -26,7 +26,7 @@ from src.eventstats import window_excess
 from src.market import index_series
 from src.run_wholemarket import closes_by_code
 from src.study import Event, Window, one_sample, resolve_window
-from src.universe import all_prices, all_punishes
+from src.universe import all_actions, all_prices, all_punishes
 
 
 OUT = Path("data/out")
@@ -122,7 +122,11 @@ def headline() -> dict[str, float]:
 
 
 def test_網頁的頭條是順延版() -> None:
-    """report.json 的頭條要跟「漲跌停順延」的管線一致,不是原本的算法。"""
+    """report.json 的頭條要跟「漲跌停順延 + 還原除權息」的管線一致,不是原本的算法。
+
+    還原是 #59 加的:持有期間的除權息、減資、面額變更要還原,不然減資會變成
+    假獲利、除息會變成假虧損。
+    """
     prices = all_prices()
     punishes = all_punishes()
     runs = pre_release_run(
@@ -130,6 +134,7 @@ def test_網頁的頭條是順延版() -> None:
         prices,
         index_series(RAW / "prices"),
         all_punishes=punishes,
+        actions=all_actions(),
     )
     clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
     report = json.loads((OUT / "report.json").read_text(encoding="utf-8"))

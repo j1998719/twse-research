@@ -21,6 +21,7 @@ from src.regime import (
     MARKET_REGIMES,
     slice_by,
 )
+from src.universe import all_actions
 
 
 if TYPE_CHECKING:
@@ -77,7 +78,7 @@ def main() -> None:
     """分段跑完所有檢定並印出結果。"""
     cli.no_args(__doc__)
     prices, punishes, index = load()
-    runs = pre_release_run(punishes, prices, index)
+    runs = pre_release_run(punishes, prices, index, actions=all_actions())
     runs = runs[runs.excess.notna()]
     print(f"資料期間 {prices.day.min().date()} ~ {prices.day.max().date()}")
     print(f"納入研究的處置事件 {len(runs)} 筆\n")

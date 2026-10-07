@@ -26,7 +26,7 @@ from src.liquidity import chain_levels
 from src.market import index_series
 from src.run_wholemarket import closes_by_code
 from src.study import Window, resolve_window
-from src.universe import all_prices, all_punishes
+from src.universe import all_actions, all_prices, all_punishes
 
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ def second_dispositions(prices: pd.DataFrame, punishes: pd.DataFrame) -> pd.Data
         if e.tags["truly_released"] and e.tags["nth"] == SECOND
     }
     calendar: list[date] = [d.date() for d in days]
-    closes = closes_by_code(prices)
+    closes = closes_by_code(prices, all_actions())
     rows = []
     second = punishes[punishes.nth == SECOND]
     for row, (w1, w2) in zip(

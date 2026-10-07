@@ -30,6 +30,8 @@ LISTED_PRICES = OUT / "prices.csv"
 OTC_PRICES = OUT / "tpex_prices.csv"
 LISTED_PUNISHES = OUT / "punishes.csv"
 OTC_PUNISHES = OUT / "tpex_punishes.csv"
+#: 除權息、減資、面額變更的還原因子(fetch_actions)
+ACTIONS = OUT / "corporate_actions.csv"
 
 
 def all_prices(listed: Path = LISTED_PRICES, otc: Path = OTC_PRICES) -> pd.DataFrame:
@@ -55,6 +57,13 @@ def all_prices(listed: Path = LISTED_PRICES, otc: Path = OTC_PRICES) -> pd.DataF
         msg = f"同一天同一個代號出現在兩個市場:{list(codes)[:5]}"
         raise ValueError(msg)
     return merged
+
+
+def all_actions(path: Path = ACTIONS) -> pd.DataFrame | None:
+    """還原因子表(code、day、factor、kind)。還沒抓過就是 None,呼叫端照原始價格算。"""
+    if not path.exists():
+        return None
+    return pd.read_csv(path, dtype={"code": str}, parse_dates=["day"])
 
 
 def all_punishes(

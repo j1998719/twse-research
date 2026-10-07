@@ -17,12 +17,13 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from src import cli
+from src.adjust import adjusted_closes
 from src.disposition_study import pre_release_run, trading_days
 from src.events.disposition import events as disposition_events
 from src.eventstats import clustered_ci, window_excess
 from src.market import index_series
 from src.study import Window, one_sample, resolve_window
-from src.universe import all_prices, all_punishes, summary
+from src.universe import all_actions, all_prices, all_punishes, summary
 
 
 if TYPE_CHECKING:
@@ -36,13 +37,27 @@ RAW = Path("data/raw/prices")
 MIN_GROUP = 6
 
 
-def closes_by_code(prices: pd.DataFrame) -> dict[str, dict[date, float]]:
-    """每檔的收盤序列。逐窗口的等權基準要用它。"""
+def closes_by_code(
+    prices: pd.DataFrame, actions: pd.DataFrame | None = None
+) -> dict[str, dict[date, float]]:
+    """每檔的收盤序列。逐窗口的等權基準要用它。
+
+    actions(code、day、factor)給了就用還原收盤(#59):除權息、減資那天的
+    跳空不算成報酬,個股和基準兩邊一起還原。
+    """
+    frame = prices[["code", "day", "close"]]
+    column = "close"
+    if actions is not None and not actions.empty:
+        frame = adjusted_closes(
+            frame.assign(code=frame.code.astype(str)),
+            actions.assign(code=actions.code.astype(str)),
+        )
+        column = "adj_close"
     out: dict[str, dict[date, float]] = {}
-    for code, group in prices.groupby("code"):
+    for code, group in frame.groupby("code"):
         series = {
             day.date(): float(close)
-            for day, close in zip(group.day, group.close, strict=True)
+            for day, close in zip(group.day, group[column], strict=True)
             if pd.notna(close) and close > 0
         }
         if series:
@@ -77,7 +92,7 @@ def main() -> int:
         if e.tags["truly_released"] and e.tags["has_excess"]
     ]
     days = sorted(day.date() for day in trading_days(prices))
-    closes = closes_by_code(prices)
+    closes = closes_by_code(prices, all_actions())
     # market 從**公告那一列**認,不是按代號查:轉上市的股票(6426、6446)
     # 在兩個市場都有處置公告,按代號查會讓它的上櫃事件全部被標成上市。
     # 這一欄正是這個模組說「一定要能分市場看」的那一欄,不能用錯的 join 湊

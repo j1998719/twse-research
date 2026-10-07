@@ -398,6 +398,55 @@ def tradable_from(
     return None
 
 
+#: 代號 → [(事件日, 因子)]。因子 = 參考價 / 前一日收盤(跟均線還原同一個定義)
+Actions = dict[str, list[tuple[pd.Timestamp, float]]]
+
+
+def by_code(actions: pd.DataFrame | None) -> Actions:
+    """除權息、減資、面額變更的因子表(corporate_actions.csv)整理成依代號查。"""
+    out: Actions = {}
+    if actions is None:
+        return out
+    for code, day, factor in zip(
+        actions.code, actions.day, actions.factor, strict=True
+    ):
+        out.setdefault(str(code), []).append((pd.Timestamp(day), float(factor)))
+    return out
+
+
+def holding_factor(
+    actions: Actions, code: object, bought: pd.Timestamp, sold: pd.Timestamp
+) -> float:
+    """持有期間的還原因子連乘(#59)。
+
+    買進日之後、賣出日當天以前(含)的事件才算:收盤買在除息日,買到的已經是
+    除息後的價;收盤賣在除息日,賣的也是除息後的價,中間那段要還原。
+    報酬 = 賣價 / (買價 × 因子) − 1:除息時把股息加回來,減資時扣掉價格跳上去
+    的假獲利。
+    """
+    out = 1.0
+    for day, factor in actions.get(str(code), []):
+        if bought < day <= sold:
+            out *= factor
+    return out
+
+
+def _fill(
+    buy_book: Book,
+    sell_book: Book,
+    code: object,
+    buy_day: pd.Timestamp,
+    sell_day: pd.Timestamp,
+) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """漲停買不到、跌停賣不掉就順延(#45)。順延到最後還是成交不了回 None。
+
+    先找賣出日,再找買進日 —— 買進最晚只能順延到原定賣出日的前一天。
+    """
+    sold = tradable_from(sell_book, code, sell_day, None, buying=False)
+    bought = tradable_from(buy_book, code, buy_day, sell_day, buying=True)
+    return None if sold is None or bought is None else (bought, sold)
+
+
 #: pre_release_run 每一列的欄位
 RUN_COLUMNS = [
     "code",
@@ -415,6 +464,8 @@ RUN_COLUMNS = [
     "release",
     "buy",
     "sell",
+    #: 持有期間的還原因子連乘。1 = 沒有事件
+    "adj",
     "gross",
     "net",
     "excess",
@@ -428,8 +479,12 @@ def pre_release_run(
     index: dict[date, float] | None = None,
     timing: Timing | None = None,
     all_punishes: pd.DataFrame | None = None,
+    actions: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """處置後半段買進,出關前一日賣出。
+
+    actions 給了(code、day、factor)就還原持有期間的除權息、減資、面額變更
+    (#59);沒給就用原始價格,只有釘住舊數字的測試才這樣用。
 
     以出關日為原點(t=0)對齊,而不是以公告日 —— 處置長度有 5 日也有 10 日,
     用公告日對齊會把兩種混在一起。對齊之後看得出漲勢在 t-1 見頂,
@@ -438,6 +493,7 @@ def pre_release_run(
     """
     index = index or {}
     timing = timing or Timing()
+    events = by_code(actions)
     # 兩次處置常常重疊。用全部的處置期間判斷「出關日」那天是不是真的自由了,
     # 而不是只看這一筆公告自己的結束日。
     spans = _locked_days(all_punishes if all_punishes is not None else punishes)
@@ -462,24 +518,28 @@ def pre_release_run(
         if buy_day not in close_px.index or sell_day not in close_px.index:
             continue
         planned_buy, planned_sell = buy_day, sell_day
-        if timing.defer_limits:
-            # 先找賣出日,再找買進日 —— 買進最晚只能順延到原定賣出日的前一天
-            sell_found = tradable_from(
-                Book(days, sell_px, close_px), code, sell_day, None, buying=False
+        filled = (
+            _fill(
+                Book(days, buy_px, close_px),
+                Book(days, sell_px, close_px),
+                code,
+                buy_day,
+                sell_day,
             )
-            buy_found = tradable_from(
-                Book(days, buy_px, close_px), code, buy_day, sell_day, buying=True
-            )
-            if sell_found is None or buy_found is None:
-                unfilled += 1
-                continue
-            buy_day, sell_day = buy_found, sell_found
+            if timing.defer_limits
+            else (buy_day, sell_day)
+        )
+        if filled is None:
+            unfilled += 1
+            continue
+        buy_day, sell_day = filled
         buy = as_number(buy_px.at[buy_day, code])
         sell = as_number(sell_px.at[sell_day, code])
         if buy is None or sell is None or buy <= 0:
             continue
 
-        gross = (sell / buy - 1) * 100
+        adj = holding_factor(events, code, buy_day, sell_day)
+        gross = (sell / (buy * adj) - 1) * 100
         net = gross - ROUND_TRIP_COST_PCT
         market = _index_return(index, buy_day, sell_day)
         # 處置公告是盤後發布的。在公告日當天(或更早)的收盤買進,
@@ -513,6 +573,7 @@ def pre_release_run(
                 "release": release.date(),
                 "buy": buy,
                 "sell": sell,
+                "adj": adj,
                 "gross": round(gross, 2),
                 "net": round(net, 2),
                 "excess": None if market is None else round(net - market, 2),
@@ -532,6 +593,7 @@ def exit_rule(
     *,
     stop: float | None = None,
     take: float | None = None,
+    actions: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """在 pre_release_run 的每一筆上套停損或停利,看提早出場會怎樣(#15)。
 
@@ -539,6 +601,8 @@ def exit_rule(
     在**下一個交易日收盤**賣 —— 收盤後才知道觸發,不能用同一根收盤成交。
     賣出那天跌停照樣順延(#45)。觸發的隔天已經是原定賣出日(或更晚)就照原定賣,
     不算觸發。stop / take 是比例,0.05 = 5%,一次只測一種。
+    actions 跟 pre_release_run 一樣:給了就還原持有期間的除權息(#59),
+    觸發也用還原後的漲跌判斷。
     """
     if (stop is None) == (take is None):
         msg = "stop 和 take 一次只測一種,也不能都不給"
@@ -547,6 +611,7 @@ def exit_rule(
     days = trading_days(prices)
     close = build_panels(prices)["close"]
     book = Book(days, close, close)
+    events = by_code(actions)
 
     records: list[dict[str, object]] = []
     #: 每一列在 runs 裡的索引。成對檢定要逐筆對齊基準,跳過的列不能讓後面錯位
@@ -561,7 +626,7 @@ def exit_rule(
             px = as_number(close.at[days[k], code])
             if px is None:
                 continue
-            change = px / buy - 1
+            change = px / (buy * holding_factor(events, code, bought, days[k])) - 1
             hit = (stop is not None and change <= -stop) or (
                 take is not None and change >= take
             )
@@ -575,7 +640,7 @@ def exit_rule(
         sell = as_number(close.at[sold, code])
         if sell is None:
             continue
-        gross = (sell / buy - 1) * 100
+        gross = (sell / (buy * holding_factor(events, code, bought, sold)) - 1) * 100
         net = gross - ROUND_TRIP_COST_PCT
         market = _index_return(index, bought, sold)
         kept.append(at)

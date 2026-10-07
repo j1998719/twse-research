@@ -33,7 +33,7 @@ from src.disposition_study import (
 )
 from src.market import ROUND_TRIP_COST_PCT, index_series
 from src.regime import MARKET_REGIMES, slice_by
-from src.universe import all_prices, all_punishes
+from src.universe import all_actions, all_prices, all_punishes
 
 
 RAW = Path("data/raw")
@@ -274,7 +274,10 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
     days = trading_days(prices)
     numbered = punishes[punishes.nth > 0]
 
-    raw_runs = pre_release_run(numbered, prices, index, all_punishes=punishes)
+    actions = all_actions()
+    raw_runs = pre_release_run(
+        numbered, prices, index, all_punishes=punishes, actions=actions
+    )
     runs = raw_runs[
         raw_runs.knowable & raw_runs.truly_released & raw_runs.excess.notna()
     ]
@@ -307,6 +310,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
             index,
             Timing(entry=entry, exit=exit_),
             all_punishes=punishes,
+            actions=actions,
         )
         variant = variant[variant.knowable & variant.truly_released]
         values = variant.excess.dropna().to_numpy()
@@ -360,7 +364,7 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
 
     return {
         "generated": str(today.date()),
-        "path": _path(punishes, prices, index),
+        "path": _path(punishes, prices, index, actions),
         "coverage": {
             "from": str(days.min().date()),
             "to": str(days.max().date()),
@@ -418,7 +422,10 @@ PATH_OFFSETS = tuple(range(-6, 6))
 
 
 def _path(
-    punishes: pd.DataFrame, prices: pd.DataFrame, index: dict[date, float]
+    punishes: pd.DataFrame,
+    prices: pd.DataFrame,
+    index: dict[date, float],
+    actions: pd.DataFrame | None = None,
 ) -> list[dict[str, float]]:
     """以出關日對齊的超額累積報酬路徑。
 
@@ -441,6 +448,7 @@ def _path(
             index,
             timing=timing,
             all_punishes=punishes,
+            actions=actions,
         )
         clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
         if len(clean) < MIN_SAMPLES:
