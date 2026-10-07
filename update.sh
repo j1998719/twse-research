@@ -66,6 +66,9 @@ step "抓三大法人" .venv/bin/python -m src.fetch_chips 2020-01-01 "$TODAY"
 # 集保快照只有最新一週,錯過就永遠補不回來,所以放在算統計之前 ——
 # 就算後面的步驟壞了,這一週的股權分散還是存下來了。
 step "存集保股權分散快照" .venv/bin/python -m src.fetch_tdcc
+# 往回補集保的單檔歷史(#49:過去 n 週大戶增加、股價沒動)。一檔一週兩個請求,
+# 一次補不完,每天只花 20 分鐘,下一次從還缺的地方接著補,最新的週先補
+step "往回補集保單檔歷史" .venv/bin/python -m src.fetch_tdcc_history --weeks 8 --minutes 20
 
 # 上櫃佔了可回測事件的 58%(1,314 / 2,265)。漏掉它的話 build_report 會拿
 # 舊的上櫃資料去算,而且不會有任何跡象 —— 抓過的日子有快取,所以每天跑只會
