@@ -5,6 +5,7 @@
 就能產出完整形狀,所以這個測試在沒有 data/ 的新機器上也會跑。
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -72,3 +73,16 @@ def test_網頁的級距下限跟_python_一樣() -> None:
     match = re.search(r"LOT_EDGES[^=]*=\s*\[(.*?)\]", text, re.DOTALL)
     assert match, "在 screen.ts 裡找不到 LOT_EDGES"
     assert tuple(int(x) for x in re.findall(r"\d+", match.group(1))) == THRESHOLDS
+
+
+FIXTURE = ROOT / "web" / "e2e" / "fixtures" / "bigholders.json"
+
+
+def test_瀏覽器測試的假資料跟真的形狀一樣() -> None:
+    # web/e2e 用這份假資料建頁面;欄位漂移的話,瀏覽器測試會測到不存在的形狀
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert set(data) == declared_keys()
+    assert tuple(data["thresholds"]) == THRESHOLDS
+    for row in data["rows"]:
+        assert set(row) == row_keys()
+        assert len(row["pct"]) == len(THRESHOLDS)

@@ -10,10 +10,12 @@
 		"build": "node --experimental-strip-types web/build.ts",
 		"check": "biome check . && tsc --noEmit",
 		"fix": "biome check --write .",
-		"build:holders": "node --experimental-strip-types web/build.ts holders"
+		"build:holders": "node --experimental-strip-types web/build.ts holders",
+		"e2e": "playwright test -c web/e2e"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.13",
+		"@playwright/test": "^1.63.0",
 		"@types/node": "^26.6.2",
 		"esbuild": "^0.25.0",
 		"typescript": "~5.7.0"

@@ -485,16 +485,17 @@ footer {
 	gap: 8px;
 	align-items: center;
 }
-.seg-buttons[hidden],
-.big-free[hidden] {
-	display: none;
-}
 /* .controls label 是直排(標題在上、欄位在下),這一個要橫排:≥ 數字 單位 */
 .controls .big-free {
 	display: flex;
 	flex-direction: row;
 	color: var(--ink);
 	font-size: 17px;
+}
+/* 要寫在上面那條 display: flex 之後、特異度也不能比較低,hidden 才藏得起來 */
+.controls .seg-buttons[hidden],
+.controls .big-free[hidden] {
+	display: none;
 }
 .controls .big-free input {
 	width: 9em;

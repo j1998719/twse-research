@@ -17,7 +17,7 @@ Python 版本定在 `.python-version`(3.13),Node 定在 `.nvmrc`。`pyproject.to
 ## 常用指令
 
 ```bash
-make check   # ruff + mypy + pytest,跟 pre-push 跑的是同一組
+make check   # ruff + mypy + pytest + Biome + tsc + 瀏覽器測試,跟 pre-push 跑的是同一組
 make fix     # 自動修正與排版
 
 .venv/bin/python -m src.fetch_all    2025-01-01 2026-09-21   # 注意股與處置股公告
@@ -54,14 +54,33 @@ artifact 的 CSP 禁止外部腳本,只有 Google Fonts 例外。
 `tests/test_report_contract.py` 會比對實際輸出;
 `parseReport()` 在執行期再檢查一次,缺欄位直接報錯而不是顯示 undefined。
 
+### 瀏覽器測試
+
+tsc 和 Biome 看不到畫面。輸入框被擠成三行、數字沒對齊、該藏的東西沒藏起來,
+這類問題只有在瀏覽器裡跑起來才看得到。`web/e2e/` 用 Playwright 驗證:
+
+```bash
+make e2e      # 第一次會自動下載 Chromium
+```
+
+1. 把 `web/e2e/fixtures/` 的假資料建成頁面(`BUILD_DIR`,不碰 `data/out/`)
+1. 在無頭 Chromium 裡實際操作:切換大戶定義、填數字、讀 localStorage 的舊設定。
+   桌機和手機寬度各跑一次
+1. 斷言結果(表格內容、標題、排版位置、沒有 JS 錯誤、沒有橫向捲動),失敗就擋 push
+1. 截圖存到 `test-results/screens/`,看排版用
+
+假資料的形狀由 `tests/test_holders_contract.py` 對照真的輸出,不會漂移。改了網頁就先加一個
+會失敗的瀏覽器測試,再改到它通過。
+
 ### 大戶持股排行
 
 ```bash
 make holders  # 用最新兩份集保快照與收盤行情產生 data/out/holders.html
 ```
 
-列出上市與上櫃普通股的大戶持股比例,門檻可在 400 / 600 / 800 / 1000 張之間切換,
-也可以依週變化、大戶人數、當日漲跌排序。給不寫程式的人用,所以字放大、手機可讀。
+列出上市與上櫃普通股的大戶持股比例。大戶可以用張數(400 / 600 / 800 / 1000 張)、
+持股金額或佔市值比例定義,後兩者先換算成張數再往上取到集保的級距(#55)。
+條件可以自己堆疊,也可以依週變化、大戶人數、當日漲跌排序。給不寫程式的人用,所以字放大、手機可讀。
 
 網址是 <https://j1998719.github.io/twse-research/>。`update.sh` 最後一步會跑
 `publish_pages.sh`,把建好的頁面推到 `gh-pages` 分支(只有 `index.html`,沒有原始碼),

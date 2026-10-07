@@ -3,7 +3,7 @@ VENV := .venv/bin
 NODE := PATH="$(HOME)/.nvm/versions/node/v22.23.2/bin:$(PATH)"
 
 # 跟 pre-push 跑的是同一組
-check: pyver lint format-check types test dead docs-check web-check
+check: pyver lint format-check types test dead docs-check web-check e2e
 
 fix:
 	$(VENV)/ruff check --fix .
@@ -30,6 +30,10 @@ web-check:     ## 網頁的 lint 與型別
 	$(NODE) npx biome check .
 	$(NODE) npx tsc --noEmit
 
+e2e:           ## 瀏覽器測試:假資料建頁面、無頭 Chromium 操作、截圖在 test-results/screens/
+	$(NODE) npx playwright install chromium >/dev/null
+	$(NODE) npm run -s e2e
+
 report:        ## 重新產生 report.json 並建置網頁
 	$(VENV)/python -m src.build_report
 	$(NODE) npm run build
@@ -38,4 +42,4 @@ holders:       ## 重新產生 bigholders.json 並建置大戶持股頁
 	$(VENV)/python -m src.build_bigholders
 	$(NODE) npm run build:holders
 
-.PHONY: pyver check fix lint format-check types test dead docs-check web-check report holders
+.PHONY: pyver check fix lint format-check types test dead docs-check web-check e2e report holders

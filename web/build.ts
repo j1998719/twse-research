@@ -6,6 +6,7 @@
  * 所以 JS 和 CSS 都要內嵌。
  *
  * 用法:node web/build.ts [report|holders],不給就是 report。
+ * BUILD_DIR 可以換掉資料和輸出的目錄(預設 data/out)—— 瀏覽器測試用假資料建頁面。
  * 兩頁分開建,一頁的資料壞了不會擋住另一頁。
  */
 
@@ -16,7 +17,7 @@ import { buildSync } from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
-const out = join(root, "data", "out");
+const out = process.env.BUILD_DIR ?? join(root, "data", "out");
 
 interface Page {
 	shell: string;

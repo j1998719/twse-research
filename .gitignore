@@ -16,3 +16,7 @@ node_modules/
 
 # 測試覆蓋率的暫存檔,每跑一次測試就變;裡面有本機的絕對路徑
 .coverage
+
+# 瀏覽器測試建出來的頁面、截圖、失敗時的錄影
+test-results/
+playwright-report/

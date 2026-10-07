@@ -22,3 +22,5 @@ pre-push:
       run: PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH" npx biome check .
     tsc:
       run: PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH" npx tsc --noEmit
+    e2e:
+      run: make e2e
