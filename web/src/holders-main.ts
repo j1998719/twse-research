@@ -281,7 +281,7 @@ function usedTier(r: HolderRow): string {
 	if (t === null) return "";
 	const edge = LOT_EDGES[t.index] ?? 0;
 	const text = edge === 0 ? "全部" : `${thousands(edge)}張+`;
-	return ` <small class="qual">${text}${t.capped ? "(已是最高級)" : ""}</small>`;
+	return `<small class="tier">${text}${t.capped ? " 最高級" : ""}</small>`;
 }
 
 /** 用到還沒準備好的資料時說一聲,不然清單空了會以為是條件太嚴 */

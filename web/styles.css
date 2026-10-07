@@ -413,6 +413,13 @@ footer {
 .holders td:nth-child(2) {
 	text-align: left;
 }
+/* 金額、比例模式下這一檔用的級距(#55):放在數字下一行,數字才會對齊 */
+.holders .tier {
+	display: block;
+	font-size: 11px;
+	color: var(--muted);
+	font-weight: 400;
+}
 .holders .rank {
 	color: var(--muted);
 	font-size: 13px;
@@ -481,6 +488,13 @@ footer {
 .seg-buttons[hidden],
 .big-free[hidden] {
 	display: none;
+}
+/* .controls label 是直排(標題在上、欄位在下),這一個要橫排:≥ 數字 單位 */
+.controls .big-free {
+	display: flex;
+	flex-direction: row;
+	color: var(--ink);
+	font-size: 17px;
 }
 .controls .big-free input {
 	width: 9em;
