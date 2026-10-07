@@ -311,6 +311,11 @@ def _validate(
             f"{r.name}:p={r.p:.3f},方向{'與預測一致' if same else '與預測相反'} → "
             f"{'樣本外成立' if ok else '樣本外不成立'}"
         )
+    # 驗證組的判定也是「跟 0 比」(H3)或看單組水位,一樣要有安慰劑在旁邊
+    if any(r.hypothesis in {"H1", "H2"} for r in results):
+        _placebo("賣回", put_events, H1_WINDOWS, data)
+    if any(r.hypothesis == "H3" for r in results):
+        _placebo("轉換起日", conv_events, H3_WINDOWS, data)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
