@@ -158,6 +158,8 @@ function title(key: MetricKey): string {
 
 function format(key: MetricKey, v: number | null): string {
 	if (v === null) return "—";
+	// 0.00% 看起來像沒資料;台股看盤的說法是「平盤」(#54)
+	if (key === "change" && v === 0) return "平盤";
 	const m = METRICS[key];
 	const text = m.digits === 0 ? thousands(Math.round(v)) : v.toFixed(m.digits);
 	const unit = m.unit === "%" ? "%" : "";

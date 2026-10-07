@@ -334,3 +334,24 @@ class TestTrade:
             "9999", self.days[1], self.days[3], self.days, self._close([1] * 6)
         )
         assert got["close"] is None
+
+
+def test_推算的交易日跳過休市日() -> None:
+    from datetime import date
+
+    days = pd.DatetimeIndex(pd.to_datetime(["2026-10-05", "2026-10-06"]))
+    got = _projected_days(days, {date(2026, 10, 9)})
+    future = [d.date().isoformat() for d in got[2:5]]
+    # 10/07、10/08,跳過 10/09(國慶補假)、10/10、10/11,下一個是 10/12
+    assert future == ["2026-10-07", "2026-10-08", "2026-10-12"]
+
+
+def test_進場就在最新收盤_報酬留空_不顯示負的成本() -> None:
+    from src.build_report import _trade
+
+    days = pd.bdate_range("2026-10-01", periods=4)
+    close = pd.DataFrame({"1111": [100.0, 100.0, 100.0, 101.0]}, index=days)
+    got = _trade("1111", days[3], days[3] + pd.Timedelta(days=7), days, close)
+    assert got["entryPrice"] == 101.0
+    assert got["tradeState"] == "剛進場"
+    assert got["tradeReturn"] is None

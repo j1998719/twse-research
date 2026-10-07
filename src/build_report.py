@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src import holidays
 from src.backtest import (
     PRE_RELEASE_ENTRY,
     Book,
@@ -59,13 +60,20 @@ def _p(values: np.ndarray) -> float | None:
     return round(float(stats.wilcoxon(values)[1]), 4)
 
 
-def _projected_days(days: pd.DatetimeIndex) -> list[pd.Timestamp]:
-    """已知交易日 + 往後推算的平日。國定假日無法預知,所以只能用平日。"""
+def _projected_days(
+    days: pd.DatetimeIndex, closed: set[date] | None = None
+) -> list[pd.Timestamp]:
+    """已知交易日 + 往後推算的交易日:跳過週末和證交所公告的休市日(#54)。
+
+    closed 是空的(抓不到休市表)時,就只能跳過週末 —— 2026-10-09 國慶補假
+    這種日子會被當成交易日,推算出來的買賣點差一天。
+    """
+    closed = closed or set()
     out = list(days)
     cursor = days.max().date()
     for _ in range(PROJECT_DAYS):
         cursor += timedelta(days=1)
-        if cursor.weekday() < 5:  # noqa: PLR2004
+        if cursor.weekday() < 5 and cursor not in closed:  # noqa: PLR2004
             out.append(pd.Timestamp(cursor))
     return out
 
@@ -140,7 +148,11 @@ def _trade(
     exit_day = (
         tradable_from(book, code, sell, None, buying=False) if sell <= last else None
     )
-    if exit_day is None:
+    price: float | None = None
+    if entry == last:
+        # 進場就在最新收盤:還沒持有任何一天,報酬只會是 −成本,看起來像在賠(#54)
+        out["tradeState"] = "剛進場"
+    elif exit_day is None:
         price = out["close"]
         out["tradeState"] = "跌停賣不掉,順延中" if sell <= last else "持有中"
     else:
@@ -338,7 +350,13 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
     )
 
     after = exit_returns(numbered, prices, index)
-    seq = _projected_days(days)
+    last = days.max().date()
+    closed = holidays.load(
+        sorted({last.year, (last + timedelta(days=PROJECT_DAYS * 2)).year}),
+        RAW / "holidays",
+        today=today.date(),
+    )
+    seq = _projected_days(days, closed)
 
     return {
         "generated": str(today.date()),
