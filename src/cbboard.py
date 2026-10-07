@@ -62,7 +62,8 @@ if TYPE_CHECKING:
 
 ENCODING = "cp950"
 #: 看板檔名裡的日期,例如 RSdrs001.20170117-C.csv
-FILE_DAY = re.compile(r"RSdrs001\.(\d{8})-C\.csv$")
+#: 列表裡檔名的日期。看板(RSdrs001)和日行情(RSta0113,#64)同一種寫法
+FILE_DAY = re.compile(r"RS\w+\.(\d{8})-C\.csv$", re.IGNORECASE)
 #: DATADATE 的寫法:日期:106年01月17日。民國 100 年以前是兩位數
 DATA_DAY = re.compile(r"(\d{2,3})年(\d{1,2})月(\d{1,2})日")
 #: 新格式的日期 2025/03/11

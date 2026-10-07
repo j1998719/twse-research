@@ -28,12 +28,16 @@ import urllib.parse
 import urllib.request
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src import cli
-from src.cbboard import BoardError, board_path, months, parse, parse_listing
+from src.cbboard import board_path, months, parse, parse_listing
 from src.net import TLS
 from src.tpex import UA
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 HOST = "https://www.tpex.org.tw"
@@ -70,30 +74,41 @@ def _request(url: str, data: bytes | None = None) -> bytes:
         return body
 
 
-def listing(month: date) -> list[tuple[date, str]]:
-    """一個月的 (資料日期, 看板路徑)。"""
-    form = urllib.parse.urlencode({"date": f"{month:%Y/%m/%d}", "fileCode": "cbdrs001"})
+def listing(month: date, file_code: str = "cbdrs001") -> list[tuple[date, str]]:
+    """一個月的 (資料日期, 檔案路徑)。file_code:cbdrs001 看板、rsta0113 日行情(#64)。"""
+    form = urllib.parse.urlencode({"date": f"{month:%Y/%m/%d}", "fileCode": file_code})
     payload: dict[str, Any] = json.loads(_request(LISTING_URL, form.encode()))
     return parse_listing(payload)
 
 
-def fetch_month(month: date, root: Path) -> tuple[int, int, list[str]]:
-    """抓一個月。回傳 (新存的份數, 已經有的份數, 失敗說明)。"""
+def fetch_month(
+    month: date,
+    root: Path,
+    file_code: str = "cbdrs001",
+    read: Callable[[bytes], date] | None = None,
+    where: Callable[[Path, date], Path] = board_path,
+) -> tuple[int, int, list[str]]:
+    """抓一個月。回傳 (新存的份數, 已經有的份數, 失敗說明)。
+
+    read 把原始位元組解成「檔案裡寫的日期」,解不出來要拋 ValueError(BoardError、
+    QuoteError 都是);預設是看板。每份先過它才存。
+    """
+    read = read or (lambda raw: parse(raw).day)
     saved = skipped = 0
     failed: list[str] = []
-    for day, path in listing(month):
-        dest = board_path(root, day)
+    for day, path in listing(month, file_code):
+        dest = where(root, day)
         if dest.exists():
             skipped += 1
             continue
         try:
             raw = _request(HOST + path)
-            board = parse(raw)
-        except (OSError, BoardError) as exc:
+            stamped = read(raw)
+        except (OSError, ValueError) as exc:
             failed.append(f"{day} {type(exc).__name__}: {exc}")
             continue
-        if board.day != day:
-            failed.append(f"{day} 檔案裡的 DATADATE 是 {board.day}")
+        if stamped != day:
+            failed.append(f"{day} 檔案裡的 DATADATE 是 {stamped}")
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(gzip.compress(raw))
