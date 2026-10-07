@@ -72,6 +72,8 @@ def second_dispositions(prices: pd.DataFrame, punishes: pd.DataFrame) -> pd.Data
         rows.append(
             {
                 "code": code,
+                "start": pd.Timestamp(row["start"]),
+                "entry": span[0],
                 "month": f"{span[0]:%Y-%m}",
                 "w1": w1,
                 "w2": w2,
