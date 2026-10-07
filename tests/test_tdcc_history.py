@@ -1,3 +1,4 @@
+import http.client
 import json
 from datetime import date
 from pathlib import Path
@@ -69,3 +70,17 @@ def test_時間到就停_已經補的有存(
     )
     assert fh.backfill([(W2, "3105")], tmp_path, minutes=0, pause=0) == (0, 0, 0)
     assert fh.backfill([(W2, "3105")], tmp_path, minutes=1, pause=0) == (1, 0, 0)
+
+
+def test_回應讀到一半就斷_算失敗不停掉(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake(day: date, code: str) -> Week:
+        if code == "1101":
+            partial = b"partial"
+            raise http.client.IncompleteRead(partial)
+        return Week(day, code, {"total": Band(1, 1, 100.0)})
+
+    monkeypatch.setattr(fh, "fetch_week", fake)
+    missing = [(W2, "1101"), (W2, "2330")]
+    assert fh.backfill(missing, tmp_path, minutes=1, pause=0) == (1, 0, 1)

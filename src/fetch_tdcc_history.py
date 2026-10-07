@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import sys
 import time
@@ -113,7 +114,9 @@ def backfill(
             current, data = day, load(out / f"{day:%Y%m%d}.json")
         try:
             week = fetch_week(day, code)
-        except (OSError, ValueError) as exc:
+        # IncompleteRead 之類的 HTTPException 不是 OSError:集保偶爾回應到一半就斷
+        # (2026-10-07 第一次長跑在第 236 筆整個停掉),一樣算這一筆失敗、下次再查
+        except (OSError, ValueError, http.client.HTTPException) as exc:
             failed += 1
             if failed <= SHOW_FAILURES:
                 print(f"  {day} {code} 失敗:{type(exc).__name__}", flush=True)
@@ -143,7 +146,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         offered = available_weeks()
-    except OSError as exc:
+    except (OSError, http.client.HTTPException) as exc:
         print(f"查詢頁打不開:{exc}", file=sys.stderr)
         return 1
     have_snapshot = snapshot_days()
