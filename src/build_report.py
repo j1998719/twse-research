@@ -283,6 +283,8 @@ def build(today: pd.Timestamp) -> dict[str, Any]:
                 "fakeRelease": int(
                     (raw_runs.knowable & ~raw_runs.truly_released).sum()
                 ),
+                # 漲停一路順延到賣出日都買不到,或跌停順延到資料結束都賣不掉(#45)
+                "unfilled": int(raw_runs.attrs.get("unfilled", 0)),
             },
         },
         "current": _current(punishes, runs, seq, days.max(), today, market_of),
@@ -333,10 +335,13 @@ def _path(
 
     每個偏移各跑一次 (entry=-6, exit=t),所以是「從 t-6 買進、持有到 t」的
     累積報酬,和圖的說明一致。
+
+    這是價格路徑,不是交易,所以不套用漲跌停順延(#45)。順延的話,
+    t−6 那一點的買賣是同一天,一定「買不到」,整個點就消失了。
     """
     out: list[dict[str, float]] = []
     for offset in PATH_OFFSETS:
-        timing = Timing(entry=PRE_RELEASE_ENTRY, exit=offset)
+        timing = Timing(entry=PRE_RELEASE_ENTRY, exit=offset, defer_limits=False)
         runs = pre_release_run(
             punishes[punishes.nth > 0],
             prices,

@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.market import ROUND_TRIP_COST_PCT, limit_up
+from src.market import ROUND_TRIP_COST_PCT, limit_down, limit_up
 
 
 #: 新制上路日:處置改 5 個營業日、撮合改約 2 分鐘
@@ -318,6 +318,10 @@ class Timing:
     #: "close" 或 "open"
     entry_price: str = "close"
     exit_price: str = "close"
+    #: 買進那天的價格在漲停就順延到隔一個交易日,賣出那天在跌停也順延
+    #: (Jordan 2026-10-07:漲停買不到、跌停賣不掉)。歷史上釘住的數字
+    #: 是不順延算的,重現它們的測試要關掉這個
+    defer_limits: bool = True
 
 
 def _locked_days(
@@ -330,6 +334,84 @@ def _locked_days(
             (pd.Timestamp(str(raw["start"])), pd.Timestamp(str(raw["end"])))
         )
     return spans
+
+
+#: 浮點誤差的容忍度。價格和漲跌停價都是交易所檔位上的數字
+_LIMIT_EPS = 1e-6
+
+
+def _pos(days: pd.DatetimeIndex, day: pd.Timestamp) -> int:
+    """Day 在交易日序列裡的位置。day 一定是交易日。"""
+    return int(days.searchsorted(day))
+
+
+@dataclass(frozen=True)
+class _Book:
+    """判斷某天成交得了成交不了要用的價格:成交價那一張表,以及收盤(算漲跌停)。"""
+
+    days: pd.DatetimeIndex
+    px: pd.DataFrame
+    close: pd.DataFrame
+
+
+def _tradable_from(
+    book: _Book,
+    code: object,
+    start: pd.Timestamp,
+    until: pd.Timestamp | None,
+    *,
+    buying: bool,
+) -> pd.Timestamp | None:
+    """從 start(含)往後,第一個買得到(或賣得掉)的交易日。
+
+    買進:那天的成交價在漲停就當成買不到;賣出:在跌停就當成賣不掉。
+    沒有價格(停牌)也一樣成交不了。漲跌停價用前一個交易日的收盤算 ——
+    除權息當天的漲跌停是以參考價計算的,這裡會有誤差,但那天剛好落在
+    進出場日、又剛好碰到漲跌停的機率很低。
+
+    超過 until(不含)還成交不了就回 None。until 是 None 代表一路找到資料結束。
+    """
+    days = book.days
+    for i in range(_pos(days, start), len(days)):
+        day = days[i]
+        if until is not None and day >= until:
+            return None
+        price = as_number(book.px.at[day, code])
+        prev = as_number(book.close.at[days[i - 1], code]) if i > 0 else None
+        if price is None:
+            continue
+        if prev is None or prev <= 0:
+            return day
+        if buying and price >= limit_up(prev) - _LIMIT_EPS:
+            continue
+        if not buying and price <= limit_down(prev) + _LIMIT_EPS:
+            continue
+        return day
+    return None
+
+
+#: pre_release_run 每一列的欄位
+RUN_COLUMNS = [
+    "code",
+    "name",
+    "nth",
+    "start",
+    "end",
+    "announced",
+    "knowable",
+    "truly_released",
+    "buy_day",
+    "sell_day",
+    "buy_deferred",
+    "sell_deferred",
+    "release",
+    "buy",
+    "sell",
+    "gross",
+    "net",
+    "excess",
+    "new_rules",
+]
 
 
 def pre_release_run(
@@ -358,6 +440,8 @@ def pre_release_run(
     sell_px = panels[timing.exit_price]
 
     records: list[dict[str, object]] = []
+    #: 順延到最後還是成交不了的筆數(買進順延到賣出日、或賣出順延到資料結束)
+    unfilled = 0
     for raw in punishes.to_dict("records"):
         code = raw["code"]
         release = next_trading_day(days, pd.Timestamp(str(raw["end"])))
@@ -369,6 +453,19 @@ def pre_release_run(
             continue
         if buy_day not in close_px.index or sell_day not in close_px.index:
             continue
+        planned_buy, planned_sell = buy_day, sell_day
+        if timing.defer_limits:
+            # 先找賣出日,再找買進日 —— 買進最晚只能順延到原定賣出日的前一天
+            sell_found = _tradable_from(
+                _Book(days, sell_px, close_px), code, sell_day, None, buying=False
+            )
+            buy_found = _tradable_from(
+                _Book(days, buy_px, close_px), code, buy_day, sell_day, buying=True
+            )
+            if sell_found is None or buy_found is None:
+                unfilled += 1
+                continue
+            buy_day, sell_day = buy_found, sell_found
         buy = as_number(buy_px.at[buy_day, code])
         sell = as_number(sell_px.at[sell_day, code])
         if buy is None or sell is None or buy <= 0:
@@ -391,7 +488,10 @@ def pre_release_run(
                 "end": raw["end"],
                 "announced": None if announced is None else announced.date(),
                 #: 進場時公告已經發布了嗎。False 代表這筆用到了未來資訊
-                "knowable": announced is None or buy_day > announced,
+                # 用**原定**的買進日判斷,不是順延之後的:會在 t−6 出手,
+                # 前提是那時候已經知道處置的時程。漲停順延幾天剛好跨過
+                # 公告日,不能讓一筆原本用到未來資訊的樣本變合法
+                "knowable": announced is None or planned_buy > announced,
                 # 出關日那天是不是真的自由了。兩次處置常常重疊,
                 # False 代表它還在另一段處置裡,是假出關
                 "truly_released": not any(
@@ -399,6 +499,9 @@ def pre_release_run(
                 ),
                 "buy_day": buy_day.date(),
                 "sell_day": sell_day.date(),
+                #: 因為漲停 / 跌停順延了幾個交易日。0 代表照原定日期成交
+                "buy_deferred": _pos(days, buy_day) - _pos(days, planned_buy),
+                "sell_deferred": _pos(days, sell_day) - _pos(days, planned_sell),
                 "release": release.date(),
                 "buy": buy,
                 "sell": sell,
@@ -408,7 +511,10 @@ def pre_release_run(
                 "new_rules": pd.Timestamp(str(raw["start"])).date() >= NEW_RULES_FROM,
             }
         )
-    return pd.DataFrame(records)
+    # 全部都成交不了時 records 是空的;沒有欄位的話呼叫端一取 .knowable 就壞
+    out = pd.DataFrame(records, columns=RUN_COLUMNS)
+    out.attrs["unfilled"] = unfilled
+    return out
 
 
 #: 一個月平均幾天

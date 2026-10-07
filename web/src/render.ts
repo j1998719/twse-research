@@ -43,12 +43,16 @@ function meta(report: Report): void {
 	fill("m-bt", thousands(c.backtested));
 	fill("m-codes", c.codes === undefined ? "—" : thousands(c.codes));
 	fill("m-markets", marketBreakdown(c.markets));
-	fill("m-drop", String(c.dropped.lookahead + c.dropped.fakeRelease));
+	fill(
+		"m-drop",
+		String(c.dropped.lookahead + c.dropped.fakeRelease + c.dropped.unfilled),
+	);
 	fill("m-gen", report.generated);
 	// 這幾個數字本來寫死在 HTML 裡,所以每次資料變動就會再錯一次 ——
 	// 頁面上半部用資料渲染、下半部寫死,兩邊必然會漂開
 	fill("v-lookahead", thousands(c.dropped.lookahead));
 	fill("v-fake", thousands(c.dropped.fakeRelease));
+	fill("v-unfilled", thousands(c.dropped.unfilled));
 	fill("v-ratios", `都在 ${ratioRange(report)} 之間`);
 	fill(
 		"v-winrates",

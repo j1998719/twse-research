@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backtest import pre_release_run, trading_days
+from src.backtest import Timing, pre_release_run, summarise, trading_days
 from src.events.disposition import events as disposition_events
 from src.eventstats import window_excess
 from src.market import index_series
@@ -33,6 +33,10 @@ OUT = Path("data/out")
 RAW = Path("data/raw")
 #: [#13] 的主要發現:出關前六個交易日買、前一日賣
 PRE_RELEASE = Window(entry=-6, exit=-1)
+#: 這裡重現的是 #13 公布的、以及框架要對上的**原本的算法**:固定在 t−6 / t−1
+#: 收盤進出,不因漲跌停順延。框架的 Window 沒有順延的概念,網頁上的頭條數字
+#: 則改成會順延(#45),所以這裡一律關掉順延,跟管線的原始版本比
+NO_DEFER = Timing(defer_limits=False)
 #: 寫死的歷史數字(2,265 筆、951 筆)是用這天以前的資料算的。之後每天都有
 #: 新的處置事件出關,不截在這天,樣本數每天都會長,釘住舊結論的測試就
 #: 變成「資料一更新就失敗」—— 而它要擋的是算法或舊資料被改動,不是新資料
@@ -53,6 +57,7 @@ def reproduced() -> dict[str, object]:
         prices,
         index_series(RAW / "prices"),
         all_punishes=punishes,
+        timing=NO_DEFER,
     )
     # 餵進框架的是**未過濾**的全部事件。原本這裡先用 runs.knowable 篩過,
     # 等於把舊管線已經清乾淨的資料交給框架去確認它是乾淨的 —— 把
@@ -97,11 +102,38 @@ def reproduced() -> dict[str, object]:
 
 @pytest.fixture(scope="module")
 def headline() -> dict[str, float]:
-    """report.json 裡公布的那組數字。"""
-    loaded: dict[str, float] = json.loads(
-        (OUT / "report.json").read_text(encoding="utf-8")
-    )["headline"]
-    return loaded
+    """原本管線(不順延)的那組數字。
+
+    以前直接讀 report.json,但網頁的頭條數字改成漲跌停順延之後(#45),
+    它就不再是框架該對上的對象了。框架和原本管線比;網頁和順延版比,
+    見 test_網頁的頭條是順延版。
+    """
+    prices = all_prices()
+    punishes = all_punishes()
+    runs = pre_release_run(
+        punishes[punishes.nth > 0],
+        prices,
+        index_series(RAW / "prices"),
+        all_punishes=punishes,
+        timing=NO_DEFER,
+    )
+    clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+    return summarise(clean, "excess")
+
+
+def test_網頁的頭條是順延版() -> None:
+    """report.json 的頭條要跟「漲跌停順延」的管線一致,不是原本的算法。"""
+    prices = all_prices()
+    punishes = all_punishes()
+    runs = pre_release_run(
+        punishes[punishes.nth > 0],
+        prices,
+        index_series(RAW / "prices"),
+        all_punishes=punishes,
+    )
+    clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
+    report = json.loads((OUT / "report.json").read_text(encoding="utf-8"))
+    assert report["headline"] == summarise(clean, "excess")
 
 
 def test_樣本數對得上(reproduced: dict, headline: dict) -> None:
@@ -146,6 +178,7 @@ def via_adapter() -> dict[str, int]:
         prices,
         index_series(RAW / "prices"),
         all_punishes=punishes,
+        timing=NO_DEFER,
     )
     events = disposition_events(runs)
     days = sorted(day.date() for day in trading_days(prices))
@@ -199,6 +232,7 @@ def both_benchmarks() -> dict[str, float]:
         prices,
         index_series(RAW / "prices"),
         all_punishes=punishes,
+        timing=NO_DEFER,
     )
     events = [
         e
@@ -280,6 +314,7 @@ def listed_only() -> dict[str, float]:
         prices[prices.market == "twse"],
         index_series(RAW / "prices"),
         all_punishes=listed,
+        timing=NO_DEFER,
     )
     clean = runs[runs.knowable & runs.truly_released & runs.excess.notna()]
     clean = clean[clean.sell_day.map(_as_date) <= FROZEN]

@@ -130,7 +130,8 @@ export interface Report {
 		/** 分市場的檔數、公告數、可回測事件數。上櫃的流動性和上市不同,
 		 *  一個分不出市場的涵蓋率等於把兩個不同的東西當成一個 */
 		markets?: Record<string, MarketCoverage>;
-		dropped: { lookahead: number; fakeRelease: number };
+		/** 順延到最後還是成交不了的筆數(漲停一路買不到、跌停一路賣不掉) */
+		dropped: { lookahead: number; fakeRelease: number; unfilled: number };
 	};
 	/** 價格路徑圖。本來寫死在 render.ts 裡,而且是上市那 951 筆算的 */
 	path: PathPoint[];
