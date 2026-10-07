@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.build_bigholders import BIG_LEVELS, build, last_two_closes, latest_snapshots
+from src.build_bigholders import LEVELS, build, last_two_closes, latest_snapshots
 
 
 HEADER = "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n"
@@ -53,12 +53,14 @@ def test_只留有行情的普通股() -> None:
     assert [r["code"] for r in out["rows"]] == ["3105"]
 
 
-def test_四個級距照順序輸出() -> None:
+def test_15個級距照順序輸出() -> None:
     row = build(NOW, None, {"3105": QUOTE})["rows"][0]
-    assert len(row["pct"]) == len(BIG_LEVELS)
-    assert row["pct"] == [2.0, 1.5, 1.0, 49.69]
-    assert row["people"] == [10, 5, 3, 48]
+    assert len(row["pct"]) == len(LEVELS)
+    assert row["pct"][11:] == [2.0, 1.5, 1.0, 49.69]
+    assert row["people"][11:] == [10, 5, 3, 48]
     assert row["holders"] == 125_535
+    # 集保總股數(分級 17 的股數):佔市值比例的門檻要用(#55)
+    assert row["shares"] == 1000
     assert row["name"] == "穩懋"
 
 
@@ -72,7 +74,7 @@ def test_前一週缺的級距補_0() -> None:
     out = build(NOW, PREV, {"3105": QUOTE})
     assert out["day"] == "2026-10-02"
     assert out["prevDay"] == "2026-09-25"
-    assert out["rows"][0]["prevPct"] == [1.5, 0.0, 0.0, 49.0]
+    assert out["rows"][0]["prevPct"][11:] == [1.5, 0.0, 0.0, 49.0]
 
 
 def test_前一週沒有這一檔時是_null() -> None:

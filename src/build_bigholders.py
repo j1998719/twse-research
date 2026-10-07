@@ -3,14 +3,18 @@
 給不寫程式的人看的頁面,所以只回答一個問題:哪些股票的大戶拿得多、
 這一週有沒有變多。
 
-「大戶」的門檻沒有標準答案 —— 有人看 400 張、有人看 1,000 張 —— 所以這裡
-把 400 張以上的四個級距都分開輸出,讓網頁自己加總。集保快照的分級是固定的
-(見 tdcc.py 的「全市場快照」那一段):
+「大戶」的門檻沒有標準答案 —— 有人看 400 張、有人看 1,000 張,也有人看
+持股金額或佔公司的比例(#55)—— 所以這裡把第 1–15 級都分開輸出,讓網頁
+自己從某一級往上加總。集保快照的分級是固定的(見 tdcc.py 的「全市場快照」
+那一段),例如:
 
+    1   1 - 999 股
+    11  200,001 - 400,000 股
     12  400,001 - 600,000 股
-    13  600,001 - 800,000 股
-    14  800,001 - 1,000,000 股
     15  1,000,001 股以上
+
+金額、比例只能換算成張數,再對到級距(往上取,見網頁的 screen.ts)。比例要用
+集保總股數(shares),所以每列也帶著它。
 
 快照只有最新一週,所以「比上週」要靠 fetch_tdcc 每週存下來的檔案。
 只有一份快照的時候,週變化就是 null,不是 0。
@@ -35,14 +39,14 @@ from src.flows import FLOW_KEYS, load_flows
 from src.tdcc import SNAPSHOT_TOTAL_LEVEL, parse_snapshot, snapshot_day
 from src.tpex import is_common_stock
 from src.universe import all_prices
-from src.weekly import BIG_LEVELS, Week, fields, load_weeks, week_closes
+from src.weekly import LEVELS, Week, fields, load_weeks, week_closes
 
 
 if TYPE_CHECKING:
     from src.tdcc import Band
 
-#: 跟 BIG_LEVELS 一一對應的門檻(張)
-THRESHOLDS = (400, 600, 800, 1000)
+#: 跟 LEVELS 一一對應:每一級的下限(張)。第 1 級是零股,算 0 張
+THRESHOLDS = (0, 1, 5, 10, 15, 20, 30, 40, 50, 100, 200, 400, 600, 800, 1000)
 
 OUT = Path("data/out/bigholders.json")
 #: 除權息、減資、變更面額的還原因子(code, day, factor)。還沒有這份就不算均線
@@ -56,7 +60,7 @@ MARGIN = Path("data/out/margin.csv")
 WEEKS_DIR = Path("data/raw/tdcc_weeks")
 #: 每檔放幾週:最新一週 + 往回 8 週
 MAX_WEEKS = 9
-#: build() 的週資料:週次日期(新的在前)、每週每檔四級、每檔每週還原收盤
+#: build() 的週資料:週次日期(新的在前)、每週每檔 15 級、每檔每週還原收盤
 Weekly = tuple[list[date], dict[date, dict[str, Week]], dict[str, list[float | None]]]
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -112,12 +116,12 @@ def last_two_closes(prices: pd.DataFrame) -> dict[str, dict[str, Any]]:
 
 
 def _levels(bands: dict[int, Band]) -> tuple[list[float], list[int]]:
-    """四個大戶級距的 (佔比, 人數)。
+    """15 個級距的 (佔比, 人數)。
 
     缺的級距補 0 —— 集保每一級都會列,缺了代表那一級沒有人,不是資料壞掉。
     """
-    pct = [bands[lv].pct if lv in bands else 0.0 for lv in BIG_LEVELS]
-    people = [bands[lv].people if lv in bands else 0 for lv in BIG_LEVELS]
+    pct = [bands[lv].pct if lv in bands else 0.0 for lv in LEVELS]
+    people = [bands[lv].people if lv in bands else 0 for lv in LEVELS]
     return pct, people
 
 
@@ -185,6 +189,8 @@ def build(
                 "code": code,
                 **quote,
                 "holders": None if total is None else total.people,
+                # 集保總股數:「佔市值比例」的門檻要換成張數(#55)
+                "shares": None if total is None else total.shares,
                 "pct": pct,
                 "people": people,
                 "prevPct": prev_pct,

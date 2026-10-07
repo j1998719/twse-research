@@ -28,11 +28,23 @@
   <div class="controls">
    <fieldset class="seg" aria-label="大戶門檻">
     <span class="label">大戶 =</span>
-    <button type="button" data-level="0">400 張以上</button>
-    <button type="button" data-level="1">600 張以上</button>
-    <button type="button" data-level="2">800 張以上</button>
-    <button type="button" data-level="3">1000 張以上</button>
+    <select id="big-by" aria-label="用什麼定義大戶">
+     <option value="lots">持股張數</option>
+     <option value="amount">持股金額</option>
+     <option value="ratio">佔市值比例</option>
+    </select>
+    <span id="big-lots" class="seg-buttons">
+     <button type="button" data-lots="400">400 張以上</button>
+     <button type="button" data-lots="600">600 張以上</button>
+     <button type="button" data-lots="800">800 張以上</button>
+     <button type="button" data-lots="1000">1000 張以上</button>
+    </span>
+    <label id="big-free" class="big-free" hidden>≥
+     <input id="big-value" type="number" inputmode="decimal" min="0" aria-label="門檻">
+     <span id="big-unit"></span>
+    </label>
    </fieldset>
+   <p id="big-note" class="qual" hidden>集保只公布固定的張數級距,所以先把門檻換算成張數,再往上取到下一級。每檔股價不同,用到的級距也不同,標在「大戶持股」那一欄。</p>
    <label class="weeks-pick">過去
     <select id="weeks" aria-label="過去幾週"></select>
     <span class="qual">大戶增減、股價變動都用這段期間</span>

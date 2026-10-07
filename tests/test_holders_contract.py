@@ -8,7 +8,7 @@
 import re
 from pathlib import Path
 
-from src.build_bigholders import BIG_LEVELS, THRESHOLDS, build
+from src.build_bigholders import LEVELS, THRESHOLDS, build
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,4 +63,12 @@ def test_每一列的欄位一致() -> None:
 
 def test_門檻跟級距一樣多() -> None:
     # 網頁用索引把門檻對到級距,數量不一樣就會對錯
-    assert len(THRESHOLDS) == len(BIG_LEVELS)
+    assert len(THRESHOLDS) == len(LEVELS)
+
+
+def test_網頁的級距下限跟_python_一樣() -> None:
+    # screen.ts 用 LOT_EDGES 把金額、比例換算後的張數對到級距(#55)
+    text = (ROOT / "web" / "src" / "screen.ts").read_text(encoding="utf-8")
+    match = re.search(r"LOT_EDGES[^=]*=\s*\[(.*?)\]", text, re.DOTALL)
+    assert match, "在 screen.ts 裡找不到 LOT_EDGES"
+    assert tuple(int(x) for x in re.findall(r"\d+", match.group(1))) == THRESHOLDS

@@ -53,8 +53,8 @@ export function restorePresets(
 export function serialise(presets: Presets): unknown {
 	return presets.map((p) => {
 		if (!p) return null;
-		const { level, weeks, filters, sort, dir } = p.screen;
-		return { name: p.name, screen: { level, weeks, filters, sort, dir } };
+		const { big, weeks, filters, sort, dir } = p.screen;
+		return { name: p.name, screen: { big, weeks, filters, sort, dir } };
 	});
 }
 

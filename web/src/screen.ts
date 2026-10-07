@@ -19,21 +19,76 @@ function round2(value: number): number {
 	return Math.round(value * 100) / 100;
 }
 
-/** 大戶門檻的級距:0 = 400 張以上 … 3 = 1000 張以上 */
-export type Level = 0 | 1 | 2 | 3;
+/**
+ * 大戶怎麼定義(#55):持股張數、持股金額(萬元)、或佔公司股數的比例(%)。
+ * 集保只有固定的 15 個張數級距,所以金額和比例都先換算成張數,再往上取到
+ * 下一級的下限(Jordan 2026-10-07:「先統一往上」)。每檔股價、股數不同,
+ * 用到的級距也就不同。
+ */
+export type BigBy = "lots" | "amount" | "ratio";
+export interface Big {
+	by: BigBy;
+	value: number;
+}
 
-/** 算一個欄位需要知道的設定:大戶門檻,以及「過去 n 週」的 n(#49) */
+/** 張數模式的四個按鈕 */
+export const LOT_BUTTONS = [400, 600, 800, 1000] as const;
+/** 集保第 1–15 級的下限(張)。跟 build_bigholders.THRESHOLDS 一樣,測試會對照 */
+export const LOT_EDGES: readonly number[] = [
+	0, 1, 5, 10, 15, 20, 30, 40, 50, 100, 200, 400, 600, 800, 1000,
+];
+/** 切到金額 / 比例時一開始填的數字:1 億元、0.5% */
+export const BIG_DEFAULTS: Record<BigBy, number> = {
+	lots: 1000,
+	amount: 10000,
+	ratio: 0.5,
+};
+
+/** 這一檔要持有幾張才算大戶。算不出來(沒有股價或股數)是 null */
+export function lotsNeeded(r: HolderRow, big: Big): number | null {
+	if (big.by === "lots") return big.value;
+	if (big.by === "amount")
+		return r.close > 0 ? (big.value * 10) / r.close : null;
+	return r.shares ? (big.value / 100) * (r.shares / 1000) : null;
+}
+
+/** 這一檔用第幾級(索引)。capped = 換算的張數超過最高級,只能用 1000 張以上 */
+export interface Tier {
+	index: number;
+	capped: boolean;
+}
+
+export function tier(r: HolderRow, big: Big): Tier | null {
+	const need = lotsNeeded(r, big);
+	if (need === null) return null;
+	const index = LOT_EDGES.findIndex((edge) => edge >= need);
+	return index === -1
+		? { index: LOT_EDGES.length - 1, capped: true }
+		: { index, capped: false };
+}
+
+/** 算一個欄位需要知道的設定:大戶定義,以及「過去 n 週」的 n(#49) */
 export interface Ctx {
-	level: Level;
+	big: Big;
 	n: number;
 }
 
-/** 最新一週減 n 週前,從 level 那一級往上加總。任一週沒資料就是 null */
-function weekDiff(weeks: readonly (number[] | null)[], c: Ctx): number | null {
+/** 這一檔的大戶從第幾級開始。算不出來是 null */
+function from(r: HolderRow, c: Ctx): number | null {
+	return tier(r, c.big)?.index ?? null;
+}
+
+/** 最新一週減 n 週前,從同一級往上加總。任一週沒資料就是 null */
+function weekDiff(
+	weeks: readonly (number[] | null)[],
+	r: HolderRow,
+	c: Ctx,
+): number | null {
 	const now = weeks[0];
 	const then = weeks[c.n];
-	if (!now || !then) return null;
-	return round2(sumFrom(now, c.level) - sumFrom(then, c.level));
+	const at = from(r, c);
+	if (!now || !then || at === null) return null;
+	return round2(sumFrom(now, at) - sumFrom(then, at));
 }
 
 /** 同一段期間的還原股價漲跌 % */
@@ -63,7 +118,10 @@ export interface Metric {
 
 export type Op = ">=" | "<=";
 
-const big = (r: HolderRow, c: Ctx): number => round2(sumFrom(r.pct, c.level));
+const big = (r: HolderRow, c: Ctx): number | null => {
+	const at = from(r, c);
+	return at === null ? null : round2(sumFrom(r.pct, at));
+};
 
 /** 可以拿來當條件、也可以排序的欄位。順序就是「新增條件」選單的順序 */
 export const METRICS = {
@@ -87,10 +145,12 @@ export const METRICS = {
 		op: ">=",
 		value: 0.5,
 		step: 0.1,
-		get: (r, c) =>
-			r.prevPct === null
+		get: (r, c) => {
+			const at = from(r, c);
+			return r.prevPct === null || at === null
 				? null
-				: round2(sumFrom(r.pct, c.level) - sumFrom(r.prevPct, c.level)),
+				: round2(sumFrom(r.pct, at) - sumFrom(r.prevPct, at));
+		},
 	},
 	people: {
 		label: "大戶人數",
@@ -101,7 +161,10 @@ export const METRICS = {
 		op: ">=",
 		value: 10,
 		step: 1,
-		get: (r, c) => sumFrom(r.people, c.level),
+		get: (r, c) => {
+			const at = from(r, c);
+			return at === null ? null : sumFrom(r.people, at);
+		},
 	},
 	bigChgN: {
 		label: "大戶持股 {n} 週增減",
@@ -112,7 +175,7 @@ export const METRICS = {
 		op: ">=",
 		value: 1,
 		step: 0.5,
-		get: (r, c) => weekDiff(r.weekPct, c),
+		get: (r, c) => weekDiff(r.weekPct, r, c),
 	},
 	peopleChgN: {
 		label: "大戶人數 {n} 週增減",
@@ -123,7 +186,7 @@ export const METRICS = {
 		op: ">=",
 		value: 1,
 		step: 1,
-		get: (r, c) => weekDiff(r.weekPeople, c),
+		get: (r, c) => weekDiff(r.weekPeople, r, c),
 	},
 	priceMoveN: {
 		label: "{n} 週股價變動幅度(漲跌都算)",
@@ -303,7 +366,7 @@ export type Filter =
 	| { id: number; on: boolean; kind: "market"; market: "twse" | "otc" };
 
 export interface Screen {
-	level: Level;
+	big: Big;
 	/** 「過去 n 週」的 n */
 	weeks: number;
 	filters: Filter[];
@@ -320,7 +383,7 @@ export interface Screen {
  */
 export function defaultScreen(maxWeeks: number = MAX_WEEKS): Screen {
 	return {
-		level: 3,
+		big: { by: "lots", value: 1000 },
 		weeks: Math.max(1, Math.min(4, maxWeeks)),
 		filters: [
 			{
@@ -375,7 +438,7 @@ export function matches(row: HolderRow, query: string): boolean {
 }
 
 export function ctx(screen: Screen): Ctx {
-	return { level: screen.level, n: screen.weeks };
+	return { big: screen.big, n: screen.weeks };
 }
 
 /** 符合所有勾選條件的股票,照排序欄位排好。排序欄位是 null 的一律放最後 */
@@ -418,10 +481,8 @@ export const MAX_WEEKS = 8;
 export function restore(raw: unknown, maxWeeks: number = MAX_WEEKS): Screen {
 	const fallback = defaultScreen(maxWeeks);
 	if (typeof raw !== "object" || raw === null) return fallback;
-	const s = raw as Partial<Screen>;
-	const level = [0, 1, 2, 3].includes(Number(s.level))
-		? (Number(s.level) as Level)
-		: fallback.level;
+	const s = raw as Partial<Screen> & { level?: unknown };
+	const big = restoreBig(s.big, s.level) ?? fallback.big;
 	const sort =
 		typeof s.sort === "string" && isMetric(s.sort) ? s.sort : fallback.sort;
 	const dir = s.dir === "asc" || s.dir === "desc" ? s.dir : fallback.dir;
@@ -431,7 +492,22 @@ export function restore(raw: unknown, maxWeeks: number = MAX_WEEKS): Screen {
 	const filters = Array.isArray(s.filters)
 		? s.filters.filter(validFilter)
 		: fallback.filters;
-	return { level, weeks, sort, dir, filters, query: "" };
+	return { big, weeks, sort, dir, filters, query: "" };
+}
+
+/** 大戶定義。舊版只存 level 0–3(400 / 600 / 800 / 1000 張),照樣讀得回來 */
+function restoreBig(raw: unknown, level: unknown): Big | null {
+	if (typeof raw === "object" && raw !== null) {
+		const b = raw as Record<string, unknown>;
+		const v = b.value;
+		if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null;
+		if (b.by === "amount" || b.by === "ratio") return { by: b.by, value: v };
+		if (b.by === "lots" && (LOT_BUTTONS as readonly number[]).includes(v))
+			return { by: "lots", value: v };
+		return null;
+	}
+	const old = LOT_BUTTONS[Number(level)];
+	return old === undefined ? null : { by: "lots", value: old };
 }
 
 function validFilter(f: unknown): f is Filter {

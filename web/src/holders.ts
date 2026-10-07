@@ -5,7 +5,7 @@
  * `REQUIRED_KEYS` 是單一來源,`tests/test_holders_contract.py` 會對照。
  */
 
-/** 一檔股票。pct / people / prevPct 是 400、600、800、1000 張以上四個級距,由小到大 */
+/** 一檔股票。pct / people / prevPct 是集保第 1–15 級,由小到大(#55) */
 export interface HolderRow {
 	code: string;
 	name: string;
@@ -20,9 +20,11 @@ export interface HolderRow {
 	lots: number | null;
 	/** 總股東人數 */
 	holders: number | null;
+	/** 集保總股數。「佔市值比例」的門檻要用它換成張數 */
+	shares: number | null;
 	pct: number[];
 	people: number[];
-	/** 上一週的同四個級距。沒有上一份快照、或上週沒有這一檔時是 null */
+	/** 上一週的同 15 個級距。沒有上一份快照、或上週沒有這一檔時是 null */
 	prevPct: number[] | null;
 	/** 五年線、十年線(還原股價、1,200 / 2,400 個交易日)。歷史不夠長是 null */
 	ma5y: number | null;
@@ -43,7 +45,7 @@ export interface HolderRow {
 	shortChg5: number | null;
 	/** 券資比 % = 融券 / 融資 */
 	shortRatio: number | null;
-	/** 每週的四級佔比、人數、還原收盤,順序同 Holders.weeks(新的在前)。那週沒資料是 null(#49) */
+	/** 每週的 15 級佔比、人數、還原收盤,順序同 Holders.weeks(新的在前)。那週沒資料是 null(#49) */
 	weekPct: (number[] | null)[];
 	weekPeople: (number[] | null)[];
 	weekClose: (number | null)[];
@@ -54,7 +56,7 @@ export interface Holders {
 	/** 集保快照的資料日期 */
 	day: string | null;
 	prevDay: string | null;
-	/** 跟四個級距一一對應的門檻(張) */
+	/** 跟 15 個級距一一對應:每一級的下限(張) */
 	thresholds: number[];
 	/** 還原股價算好了沒。false 時均線區塊顯示「準備中」,不拿原始收盤頂替 */
 	maReady: boolean;

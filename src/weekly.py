@@ -6,8 +6,10 @@
 * 全市場快照(data/raw/tdcc/)用分級編號:12、13、14、15 = 400、600、800、1000 張以上
 * 單檔查詢頁往回補的(data/raw/tdcc_weeks/,fetch_tdcc_history)用級距文字
 
-這裡把兩邊對齊成同一個形狀:每週每檔 [400+, 600+, 800+, 1000+] 四級各自的佔比
-與人數(跟 bigholders.json 的 pct / people 同一個順序,網頁一樣從某一級往上加總)。
+這裡把兩邊對齊成同一個形狀:每週每檔第 1–15 級各自的佔比與人數(跟
+bigholders.json 的 pct / people 同一個順序,網頁一樣從某一級往上加總)。全部
+15 級都留著,因為大戶門檻可以用金額或佔市值比例換算(#55),高價股的 1 億元
+可能只有幾十張。
 同一週兩邊都有時用全市場快照。
 
 股價變動要跟大戶變化用**同一段期間**:每一週取集保資料日期當天(或之前最後一個
@@ -28,35 +30,46 @@ from src.tdcc import parse_snapshot, snapshot_day
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: 400 張以上的四個級距(全市場快照的分級編號),由小到大。網頁用索引對應門檻,順序不能動
-BIG_LEVELS = (12, 13, 14, 15)
-#: 跟 BIG_LEVELS 一一對應的級距文字(單檔查詢頁的寫法)
-BIG_LABELS = (
+#: 第 1–15 級(全市場快照的分級編號),由小到大。網頁用索引對應門檻,順序不能動
+LEVELS = tuple(range(1, 16))
+#: 跟 LEVELS 一一對應的級距文字(單檔查詢頁的寫法)
+LABELS = (
+    "1-999",
+    "1,000-5,000",
+    "5,001-10,000",
+    "10,001-15,000",
+    "15,001-20,000",
+    "20,001-30,000",
+    "30,001-40,000",
+    "40,001-50,000",
+    "50,001-100,000",
+    "100,001-200,000",
+    "200,001-400,000",
     "400,001-600,000",
     "600,001-800,000",
     "800,001-1,000,000",
     "1,000,001以上",
 )
 
-#: 一檔一週:([四級佔比], [四級人數])
+#: 一檔一週:([15 級佔比], [15 級人數])
 Week = tuple[list[float], list[int]]
 
 
 def from_snapshot(text: str) -> dict[str, Week]:
-    """全市場快照 → 代號 -> 四級。缺的級距是 0(那一級沒有人)。"""
+    """全市場快照 → 代號 -> 15 級。缺的級距是 0(那一級沒有人)。"""
     out: dict[str, Week] = {}
     for code, bands in parse_snapshot(text).items():
-        pct = [bands[lv].pct if lv in bands else 0.0 for lv in BIG_LEVELS]
-        people = [bands[lv].people if lv in bands else 0 for lv in BIG_LEVELS]
+        pct = [bands[lv].pct if lv in bands else 0.0 for lv in LEVELS]
+        people = [bands[lv].people if lv in bands else 0 for lv in LEVELS]
         out[code] = (pct, people)
     return out
 
 
 def from_history(data: dict[str, dict[str, list[float]]]) -> dict[str, Week]:
-    """單檔查詢頁補回來的一週 → 代號 -> 四級。級距值是 [人數, 股數, 佔比]。"""
+    """單檔查詢頁補回來的一週 → 代號 -> 15 級。級距值是 [人數, 股數, 佔比]。"""
     out: dict[str, Week] = {}
     for code, bands in data.items():
-        rows = [bands.get(label) for label in BIG_LABELS]
+        rows = [bands.get(label) for label in LABELS]
         pct = [float(r[2]) if r else 0.0 for r in rows]
         people = [int(r[0]) if r else 0 for r in rows]
         out[code] = (pct, people)

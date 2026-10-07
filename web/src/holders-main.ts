@@ -18,12 +18,14 @@ import {
 	starterPresets,
 } from "./presets.ts";
 import {
+	BIG_DEFAULTS,
+	type Big,
 	columns,
 	ctx,
 	defaultScreen,
 	type Filter,
 	isMetric,
-	type Level,
+	LOT_EDGES,
 	MAX_WEEKS,
 	METRICS,
 	type MetricKey,
@@ -31,6 +33,7 @@ import {
 	restore,
 	run,
 	type Screen,
+	tier,
 } from "./screen.ts";
 
 declare const HOLDERS_DATA: unknown;
@@ -126,10 +129,10 @@ function savePresets(): boolean {
 
 function persist(): void {
 	try {
-		const { level, weeks, filters, sort, dir } = screen;
+		const { big, weeks, filters, sort, dir } = screen;
 		localStorage.setItem(
 			STORE,
-			JSON.stringify({ level, weeks, filters, sort, dir }),
+			JSON.stringify({ big, weeks, filters, sort, dir }),
 		);
 	} catch {
 		// 私密視窗、封鎖儲存:不記也照常運作
@@ -140,8 +143,24 @@ function nextId(): number {
 	return Math.max(0, ...screen.filters.map((f) => f.id)) + 1;
 }
 
-function threshold(): number {
-	return data.thresholds[screen.level] ?? 1000;
+/** 金額用萬元存;一萬萬以上改用億 */
+function money(wan: number): string {
+	return wan >= 10000 ? `${wan / 10000} 億元` : `${thousands(wan)} 萬元`;
+}
+
+/** 條件列用的完整說法 */
+function bigLabel(big: Big): string {
+	if (big.by === "lots") return `${big.value} 張以上`;
+	if (big.by === "amount") return `持股 ${money(big.value)}以上`;
+	return `持股佔公司 ${big.value}% 以上`;
+}
+
+/** 欄位標題用的短說法 */
+function bigShort(big: Big): string {
+	if (big.by === "lots") return `${big.value}+`;
+	if (big.by === "amount")
+		return `≥${money(big.value).replace(" ", "").replace("元", "")}`;
+	return `≥${big.value}%`;
 }
 
 /** 把 {n} 換成目前選的週數 */
@@ -153,7 +172,7 @@ function withN(text: string): string {
 function title(key: MetricKey): string {
 	const m = METRICS[key];
 	const short = withN(m.short);
-	return LEVELLED.includes(key) ? `${short}(${threshold()}+)` : short;
+	return LEVELLED.includes(key) ? `${short}(${bigShort(screen.big)})` : short;
 }
 
 function format(key: MetricKey, v: number | null): string {
@@ -191,7 +210,7 @@ function filterRow(f: Filter): string {
 	if (f.kind === "market") return marketRow(f, check, remove);
 	const m = METRICS[f.metric];
 	const label = LEVELLED.includes(f.metric)
-		? `${withN(m.label)}(${threshold()} 張以上)`
+		? `${withN(m.label)}(${bigLabel(screen.big)})`
 		: withN(m.label);
 	return `<li class="${f.on ? "" : "off"}">${check}<span class="what">${label}</span>
   <select data-act="op" data-id="${f.id}" aria-label="比較">
@@ -243,7 +262,7 @@ function rowHtml(r: HolderRow, rank: number, keys: MetricKey[]): string {
 	const cells = keys
 		.map((key) => {
 			const v = METRICS[key].get(r, c);
-			const extra = key === "close" ? stale : "";
+			const extra = key === "close" ? stale : key === "big" ? usedTier(r) : "";
 			const strong = key === screen.sort ? " strong" : "";
 			return `<td class="num ${tone(key, v)}${strong}">${format(key, v)}${extra}</td>`;
 		})
@@ -253,6 +272,16 @@ function rowHtml(r: HolderRow, rank: number, keys: MetricKey[]): string {
  <td><a class="quote" href="${yahooQuote(r.code, r.market)}" ${EXTERNAL}><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></a></td>
  ${cells}
 </tr>`;
+}
+
+/** 金額、比例模式下,這一檔實際用的是幾張以上(#55) */
+function usedTier(r: HolderRow): string {
+	if (screen.big.by === "lots") return "";
+	const t = tier(r, screen.big);
+	if (t === null) return "";
+	const edge = LOT_EDGES[t.index] ?? 0;
+	const text = edge === 0 ? "全部" : `${thousands(edge)}張+`;
+	return ` <small class="qual">${text}${t.capped ? "(已是最高級)" : ""}</small>`;
 }
 
 /** 用到還沒準備好的資料時說一聲,不然清單空了會以為是條件太嚴 */
@@ -298,12 +327,7 @@ function draw(): void {
 	const note = pendingNote(keys);
 	el("pending").hidden = note === "";
 	el("pending").textContent = note;
-	for (const button of levelButtons()) {
-		button.setAttribute(
-			"aria-pressed",
-			String(Number(button.dataset.level) === screen.level),
-		);
-	}
+	drawBig();
 	el<HTMLSelectElement>("sort").value = screen.sort;
 	el<HTMLSelectElement>("weeks").value = String(screen.weeks);
 	el<HTMLSelectElement>("dir").value = screen.dir;
@@ -316,11 +340,60 @@ function changed(redrawFilters = true): void {
 	draw();
 }
 
-/** 門檻按鈕。轉成陣列才能 for...of —— tsconfig 沒有開 DOM.Iterable */
-function levelButtons(): HTMLButtonElement[] {
+/** 張數按鈕。轉成陣列才能 for...of —— tsconfig 沒有開 DOM.Iterable */
+function lotButtons(): HTMLButtonElement[] {
 	return Array.from(
-		document.querySelectorAll<HTMLButtonElement>("[data-level]"),
+		document.querySelectorAll<HTMLButtonElement>("[data-lots]"),
 	);
+}
+
+const BIG_UNITS: Record<Big["by"], string> = {
+	lots: "張",
+	amount: "萬元",
+	ratio: "%",
+};
+
+/** 大戶定義那一列:張數用按鈕,金額和比例用輸入框 */
+function drawBig(): void {
+	const { by, value } = screen.big;
+	el<HTMLSelectElement>("big-by").value = by;
+	el("big-lots").hidden = by !== "lots";
+	el("big-free").hidden = by === "lots";
+	el("big-note").hidden = by === "lots";
+	el("big-unit").textContent = BIG_UNITS[by];
+	const input = el<HTMLInputElement>("big-value");
+	input.step = by === "ratio" ? "0.1" : "1000";
+	if (by !== "lots" && document.activeElement !== input)
+		input.value = String(value);
+	for (const button of lotButtons()) {
+		button.setAttribute(
+			"aria-pressed",
+			String(by === "lots" && Number(button.dataset.lots) === value),
+		);
+	}
+}
+
+function bindBig(): void {
+	for (const button of lotButtons()) {
+		button.addEventListener("click", () => {
+			screen.big = { by: "lots", value: Number(button.dataset.lots) };
+			changed();
+		});
+	}
+	const by = el<HTMLSelectElement>("big-by");
+	by.addEventListener("change", () => {
+		const next =
+			by.value === "amount" || by.value === "ratio" ? by.value : "lots";
+		screen.big = { by: next, value: BIG_DEFAULTS[next] };
+		changed();
+	});
+	const input = el<HTMLInputElement>("big-value");
+	input.addEventListener("input", () => {
+		const v = Number(input.value);
+		if (input.value.trim() === "" || !Number.isFinite(v) || v <= 0) return;
+		screen.big = { by: screen.big.by, value: v };
+		changed();
+	});
 }
 
 function fillSelects(): void {
@@ -356,12 +429,7 @@ function bindFilters(): void {
 }
 
 function bindControls(): void {
-	for (const button of levelButtons()) {
-		button.addEventListener("click", () => {
-			screen.level = Number(button.dataset.level) as Level;
-			changed();
-		});
-	}
+	bindBig();
 	const weeks = el<HTMLSelectElement>("weeks");
 	const have = Math.max(0, data.weeks.length - 1);
 	weeks.innerHTML = Array.from({ length: MAX_WEEKS }, (_, i) => i + 1)

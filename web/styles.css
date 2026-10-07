@@ -470,6 +470,25 @@ footer {
 	gap: 8px;
 	align-items: center;
 }
+/* 大戶定義(#55):張數按鈕、或金額 / 比例輸入框 */
+.seg-buttons,
+.big-free {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.seg-buttons[hidden],
+.big-free[hidden] {
+	display: none;
+}
+.controls .big-free input {
+	width: 9em;
+}
+#big-note {
+	margin: 0;
+	max-width: 62ch;
+}
 .seg .label {
 	font-weight: 700;
 	margin-right: 4px;

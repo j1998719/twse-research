@@ -6,13 +6,19 @@ import pandas as pd
 import pytest
 
 from src.weekly import (
-    BIG_LABELS,
+    LABELS,
+    LEVELS,
     fields,
     from_history,
     from_snapshot,
     load_weeks,
     week_closes,
 )
+
+
+def _at(values: dict[int, float]) -> list[float]:
+    """15 級的清單,只有指定的級距(分級編號)有值。"""
+    return [values.get(lv, 0) for lv in LEVELS]
 
 
 HEADER = "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n"
@@ -26,22 +32,26 @@ def _snapshot(day: str, rows: dict[str, dict[int, tuple[int, float]]]) -> str:
     return "".join(out)
 
 
-def test_快照_四級照順序_缺的級距是零() -> None:
+def test_快照_15級照順序_缺的級距是零() -> None:
     got = from_snapshot(
-        _snapshot("20261002", {"3105": {12: (3, 1.5), 15: (50, 53.46)}})
+        _snapshot("20261002", {"3105": {1: (900, 2.5), 12: (3, 1.5), 15: (50, 53.46)}})
     )
-    assert got["3105"] == ([1.5, 0.0, 0.0, 53.46], [3, 0, 0, 50])
+    assert got["3105"] == (
+        _at({1: 2.5, 12: 1.5, 15: 53.46}),
+        _at({1: 900, 12: 3, 15: 50}),
+    )
 
 
 def test_單檔歷史_用級距文字對齊同一個順序() -> None:
     bands = {
-        BIG_LABELS[0]: [3, 1, 1.5],
-        BIG_LABELS[3]: [48, 1, 49.69],
+        LABELS[0]: [900, 1, 2.5],
+        LABELS[11]: [3, 1, 1.5],
+        LABELS[14]: [48, 1, 49.69],
         "total": [9, 9, 100.0],
     }
     assert from_history({"3105": bands})["3105"] == (
-        [1.5, 0.0, 0.0, 49.69],
-        [3, 0, 0, 48],
+        _at({1: 2.5, 12: 1.5, 15: 49.69}),
+        _at({1: 900, 12: 3, 15: 48}),
     )
 
 
@@ -54,14 +64,14 @@ def test_合併兩種來源_新的在前_快照優先(tmp_path: Path) -> None:
     )
     for stamp, people in (("20260924", 48), ("20261002", 1)):
         (history / f"{stamp}.json").write_text(
-            json.dumps({"3105": {BIG_LABELS[3]: [people, 1, 49.0]}}), encoding="utf-8"
+            json.dumps({"3105": {LABELS[14]: [people, 1, 49.0]}}), encoding="utf-8"
         )
     (history / "broken.json").write_text("{", encoding="utf-8")
     days, weeks = load_weeks(archive, history)
     assert days == [date(2026, 10, 2), date(2026, 9, 24)]
     # 同一週兩邊都有:用快照(50 人),不是單檔歷史(1 人)
-    assert weeks[date(2026, 10, 2)]["3105"][1][3] == 50
-    assert weeks[date(2026, 9, 24)]["3105"][1][3] == 48
+    assert weeks[date(2026, 10, 2)]["3105"][1][14] == 50
+    assert weeks[date(2026, 9, 24)]["3105"][1][14] == 48
 
 
 def test_最多幾週(tmp_path: Path) -> None:
