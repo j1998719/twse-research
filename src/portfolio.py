@@ -1,0 +1,171 @@
+"""組合層級的權益曲線:事件研究算不出來的那一半(#33)。
+
+事件研究把每一筆事件對齊在 t=0 再取統計,**時間順序被抹掉了**,所以算不出
+最大回檔(MDD)或「多久沒創新高」—— 這兩個都是建立在順序上的。這裡把交易
+放回日曆:
+
+- 每天評價:現金 + Σ 持股 × 當天收盤(停牌用最後一個收盤)。只在進出場評價
+  等於假設持有期間不會回檔,會系統性低估 MDD
+- 資金排擠:每個訊號買 1 張(跟 capital.py 同一個假設),錢不夠就跳過
+- 同一天先賣再買:收盤賣掉的錢,當天收盤就能再用
+- 來回成本在賣出時一次扣
+
+交易本身(哪天買、哪天賣、成交價)由 disposition_study.pre_release_run 決定,
+漲跌停已經順延過。這個模組只負責放回日曆,不決定進出場。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import pandas as pd
+
+from src.market import ROUND_TRIP_COST_PCT
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+#: 一張 = 1000 股
+LOT = 1000
+
+
+@dataclass(frozen=True)
+class Position:
+    """一筆交易。進出場日和成交價都由事件研究決定好了,這裡只拿來放回日曆。"""
+
+    code: str
+    buy_day: pd.Timestamp
+    sell_day: pd.Timestamp
+    buy: float
+    sell: float
+
+
+@dataclass(frozen=True)
+class Portfolio:
+    """一個本金下跑出來的結果。"""
+
+    capital: float
+    #: 每個交易日收盤的總資產(現金 + 持股市值)
+    equity: pd.Series
+    #: 已經賣掉的每一筆損益(元,已扣成本),照賣出順序
+    pnls: list[float]
+    taken: int
+    skipped: int
+    max_concurrent: int
+
+
+def _positions(trades: pd.DataFrame) -> dict[pd.Timestamp, list[Position]]:
+    """依買進日分組;同一天的照賣出日排,結果才不會因為輸入順序而變。"""
+    out: dict[pd.Timestamp, list[Position]] = {}
+    for row in trades.to_dict("records"):
+        pos = Position(
+            code=str(row["code"]),
+            buy_day=pd.Timestamp(str(row["buy_day"])),
+            sell_day=pd.Timestamp(str(row["sell_day"])),
+            buy=float(row["buy"]),
+            sell=float(row["sell"]),
+        )
+        out.setdefault(pos.buy_day, []).append(pos)
+    for group in out.values():
+        group.sort(key=lambda p: (p.sell_day, p.code))
+    return out
+
+
+def simulate(
+    trades: pd.DataFrame, closes: pd.DataFrame, capital: float, lot: int = LOT
+) -> Portfolio:
+    """照日曆跑一遍。
+
+    trades 要有 code、buy_day、sell_day、buy、sell;closes 是 交易日 × 代號 的收盤寬表
+    (欄名是字串代號)。
+    """
+    marks = closes.sort_index().ffill()
+    days = pd.DatetimeIndex(marks.index)
+    column = {str(code): i for i, code in enumerate(marks.columns)}
+    prices = marks.to_numpy(dtype=float)
+    by_buy = _positions(trades)
+    keep = 1 - ROUND_TRIP_COST_PCT / 100
+
+    cash = float(capital)
+    held: list[Position] = []
+    pnls: list[float] = []
+    taken = skipped = most = 0
+    equity: list[float] = []
+    for i, day in enumerate(days):
+        # 先賣:收盤賣掉的錢,當天收盤就能再用
+        for pos in [p for p in held if p.sell_day == day]:
+            cash += pos.sell * lot * keep
+            pnls.append(pos.sell * lot * keep - pos.buy * lot)
+            held.remove(pos)
+        # 再買:錢不夠買 1 張就跳過這個訊號
+        for pos in by_buy.get(day, []):
+            if pos.buy * lot > cash:
+                skipped += 1
+                continue
+            cash -= pos.buy * lot
+            held.append(pos)
+            taken += 1
+        most = max(most, len(held))
+        value = sum(float(prices[i, column[p.code]]) * lot for p in held)
+        equity.append(cash + value)
+
+    return Portfolio(
+        capital=float(capital),
+        equity=pd.Series(equity, index=days, name="equity"),
+        pnls=pnls,
+        taken=taken,
+        skipped=skipped,
+        max_concurrent=most,
+    )
+
+
+@dataclass(frozen=True)
+class Drawdown:
+    """最大回檔:從哪一天的高點、跌到哪一天、哪一天回到那個高點(還沒回來是 None)。"""
+
+    pct: float
+    peak: pd.Timestamp
+    trough: pd.Timestamp
+    recovered: pd.Timestamp | None
+
+
+def drawdown(equity: pd.Series) -> Drawdown:
+    """最大回檔(%,負數)。"""
+    days = pd.DatetimeIndex(equity.index)
+    values = equity.to_numpy(dtype=float)
+    running = pd.Series(values).cummax().to_numpy()
+    dd = values / running - 1
+    low = int(dd.argmin())
+    high = int(values[: low + 1].argmax())
+    back = [j for j in range(low, len(values)) if values[j] >= values[high]]
+    return Drawdown(
+        pct=float(dd[low] * 100),
+        peak=days[high],
+        trough=days[low],
+        recovered=days[back[0]] if back else None,
+    )
+
+
+def underwater_days(equity: pd.Series) -> int:
+    """最長多久沒創新高(日曆天):從一個高點到下一次超過它;一直沒超過就算到最後一天。"""
+    days = pd.DatetimeIndex(equity.index)
+    values = equity.to_numpy(dtype=float)
+    longest = 0
+    high = float("-inf")
+    since = days[0]
+    for day, value in zip(days, values, strict=True):
+        if value > high:
+            longest = max(longest, (day - since).days)
+            high, since = float(value), day
+    return max(longest, (days[-1] - since).days)
+
+
+def losing_streak(pnls: Sequence[float]) -> int:
+    """照時間順序,最多連續幾筆虧損。剛好 0 不算虧。"""
+    longest = run = 0
+    for value in pnls:
+        run = run + 1 if value < 0 else 0
+        longest = max(longest, run)
+    return longest
