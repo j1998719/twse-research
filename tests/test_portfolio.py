@@ -152,3 +152,35 @@ def test_lot_是預設() -> None:
 def test_不認得的_mode_報錯() -> None:
     with pytest.raises(ValueError, match="sizing"):
         simulate(_trades(), _closes(A=[100] * 6), capital=1, sizing="half")  # type: ignore[arg-type]
+
+
+# ---- 全額預收:賣出的錢 T+2 才到帳(#30,Jordan 2026-10-07)----
+
+
+def _prepay(*rows: tuple[str, int, int, float, float, bool]) -> pd.DataFrame:
+    return _trades(*[r[:5] for r in rows]).assign(prepay=[r[5] for r in rows])
+
+
+def test_全額預收_前兩天賣掉的錢還不能用() -> None:
+    closes = _closes(A=[100] * 6, B=[100] * 6)
+    # 本金只夠一張。A 在 D1 賣、B(全額預收)在 D2 買:錢 D3 才到帳 → 跳過
+    trades = _prepay(("A", 0, 1, 100.0, 100.0, False), ("B", 2, 4, 100.0, 100.0, True))
+    assert simulate(trades, closes, capital=110_000).skipped == 1
+
+
+def test_全額預收_T加2_之後就能用() -> None:
+    closes = _closes(A=[100] * 6, B=[100] * 6)
+    trades = _prepay(("A", 0, 1, 100.0, 100.0, False), ("B", 3, 5, 100.0, 100.0, True))
+    assert simulate(trades, closes, capital=110_000).skipped == 0
+
+
+def test_一般股票_當天賣的錢可以馬上買() -> None:
+    closes = _closes(A=[100] * 6, B=[100] * 6)
+    trades = _prepay(("A", 0, 1, 100.0, 100.0, False), ("B", 1, 4, 100.0, 100.0, False))
+    assert simulate(trades, closes, capital=110_000).skipped == 0
+
+
+def test_沒有_prepay_欄就當成都不用預收() -> None:
+    closes = _closes(A=[100] * 6, B=[100] * 6)
+    trades = _trades(("A", 0, 1, 100.0, 100.0), ("B", 1, 4, 100.0, 100.0))
+    assert simulate(trades, closes, capital=110_000).skipped == 0

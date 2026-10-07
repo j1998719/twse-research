@@ -9,7 +9,8 @@
 - 部位大小三種 mode(#33,Jordan 2026-10-07:「應該是不同 mode」):
   lot = 每筆 1 張(跟 capital.py 一樣);fixed = 每筆本金的 10%;fraction = 每筆
   前一天收盤淨值的 10%。後兩種取整數股(允許零股)。錢不夠買足就跳過
-- 同一天先賣再買:收盤賣掉的錢,當天收盤就能再用
+- 同一天先賣再買:收盤賣掉的錢,當天收盤就能再用 —— 但**全額預收**的股票(第二次
+  處置)下單時錢就要在戶頭,賣出的錢 T+2 才交割,所以只能用已交割的現金(#30)
 - 來回成本在賣出時一次扣
 
 交易本身(哪天買、哪天賣、成交價)由 disposition_study.pre_release_run 決定,
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
 
 #: 一張 = 1000 股
 LOT = 1000
+#: 賣出的錢幾個交易日後交割(台股 T+2)
+SETTLE_DAYS = 2
 #: fixed / fraction 每筆佔本金或淨值的比例(#33 事前登記,不掃)
 SHARE = 0.10
 #: 部位大小的 mode
@@ -49,6 +52,8 @@ class Position:
     sell: float
     #: 賣出時的報酬倍數(賣價 / 還原後買價)。事件研究算好的,已還原除權息(#59)
     ratio: float
+    #: 全額預收(第二次處置):只能用已交割的現金買
+    prepay: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,6 +85,7 @@ def _positions(trades: pd.DataFrame) -> dict[pd.Timestamp, list[Position]]:
                 if "gross" in row
                 else float(row["sell"]) / float(row["buy"])
             ),
+            prepay=bool(row.get("prepay", False)),
         )
         out.setdefault(pos.buy_day, []).append(pos)
     for group in out.values():
@@ -127,6 +133,8 @@ def simulate(
     #: 持有中:(部位, 股數, 買進那天在 days 裡的位置)。市值是相對於那天收盤的漲跌
     held: list[tuple[Position, int, int]] = []
     pnls: list[float] = []
+    #: 還沒交割的賣出款:(第幾個交易日到帳, 金額)
+    unsettled: list[tuple[int, float]] = []
     taken = skipped = most = 0
     equity: list[float] = []
     for i, day in enumerate(days):
@@ -135,13 +143,16 @@ def simulate(
             pos, shares, _ = item
             proceeds = pos.buy * shares * pos.ratio * keep
             cash += proceeds
+            unsettled.append((i + SETTLE_DAYS, proceeds))
             pnls.append(proceeds - pos.buy * shares)
             held.remove(item)
         # 再買,錢不夠買足就跳過這個訊號
         nav = equity[-1] if equity else float(capital)
+        unsettled = [(at, amount) for at, amount in unsettled if at > i]
         for pos in by_buy.get(day, []):
             shares = _shares(sizing, pos.buy, capital, nav, lot, share)
-            if shares <= 0 or pos.buy * shares > cash:
+            usable = cash - sum(a for _, a in unsettled) if pos.prepay else cash
+            if shares <= 0 or pos.buy * shares > usable:
                 skipped += 1
                 continue
             cash -= pos.buy * shares

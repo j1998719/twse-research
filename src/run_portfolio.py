@@ -88,6 +88,25 @@ def _row(label: str, out: Portfolio, bench_dd: float, bench_under: int) -> str:
     )
 
 
+def _annual(out: Portfolio) -> float:
+    eq = out.equity
+    span = (eq.index[-1] - eq.index[0]).days
+    return (
+        ((eq.iloc[-1] / eq.iloc[0]) ** (DAYS_PER_YEAR / span) - 1) * 100
+        if span
+        else 0.0
+    )
+
+
+def _cost(real: Portfolio, free: Portfolio) -> str:
+    """全額預收的代價:跟「賣掉的錢當天就能用」比,少賺多少、多跳過幾筆(#30)。"""
+    return (
+        f"└ 全額預收的代價:年化 {_annual(real) - _annual(free):+.1f} 個百分點、"
+        f"MDD {drawdown(real.equity).pct - drawdown(free.equity).pct:+.1f}、"
+        f"多跳過 {real.skipped - free.skipped} 筆"
+    )
+
+
 def main() -> int:
     """三組樣本 × 三種部位大小 × 四檔本金,加上大盤基準。"""
     cli.no_args(__doc__)
@@ -144,7 +163,9 @@ def main() -> int:
     for label, sample in samples:
         # gross 一定要帶進去:那是還原過的報酬,沒有它就會退回原始的賣價 ÷ 買價
         trades = sample[["code", "buy_day", "sell_day", "buy", "sell", "gross"]].assign(
-            code=sample.code.astype(str)
+            code=sample.code.astype(str),
+            # 第二次處置全額預收:只能用已交割(T+2)的現金買(#30)
+            prepay=sample.nth == SECOND,
         )
         print(f"\n{label}:訊號 {len(trades)} 筆(統計樣本 = 可交易訊號,重疊的都留著)")
         marks_needed = closes[sorted(set(trades.code))]
@@ -153,6 +174,14 @@ def main() -> int:
                 out = simulate(trades, marks_needed, capital, sizing=sizing)
                 name = f"{sizing} {capital / 10_000:,.0f} 萬"
                 print(_row(name, out, bench_dd, bench_under))
+                if trades.prepay.any():
+                    free = simulate(
+                        trades.assign(prepay=False),
+                        marks_needed,
+                        capital,
+                        sizing=sizing,
+                    )
+                    print(f"  {'':<16} {_cost(out, free)}")
     return 0
 
 
