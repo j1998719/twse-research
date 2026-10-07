@@ -153,26 +153,45 @@ def report(
 
 def registered(setting: Setting, hits: list[Hit], label: str) -> None:
     """登記的流程:形成組一次 BH;找到了的持有期才在驗證組重跑,不再校正。"""
+    family(setting, {label: hits})
+
+
+def family(setting: Setting, groups: dict[str, list[Hit]]) -> None:
+    """好幾組事件(每組 HORIZONS 個檢定)一起做一次 BH;找到了的才跑驗證組。"""
     first, last = (
         pd.Timestamp(setting.data.days[0]),
         pd.Timestamp(setting.data.days[-1]),
     )
-    formation = evaluate(
-        setting, hits, lambda _c, d: d <= FORMATION_END, (first, FORMATION_END)
-    )
-    q = list(multipletests([r.p for r in formation], method="fdr_bh")[1])
-    found = report(f"形成組(2017–2021,{label}),一次 BH:", formation, q)
-    if not any(found):
+    rows = {
+        label: evaluate(
+            setting, hits, lambda _c, d: d <= FORMATION_END, (first, FORMATION_END)
+        )
+        for label, hits in groups.items()
+    }
+    flat = [r for group in rows.values() for r in group]
+    corrected = iter(multipletests([r.p for r in flat], method="fdr_bh")[1])
+    found = {
+        label: report(
+            f"形成組(2017–2021,{label}),{len(flat)} 個檢定一次 BH:",
+            group,
+            [next(corrected) for _ in group],
+        )
+        for label, group in rows.items()
+    }
+    if not any(any(f) for f in found.values()):
         print("\n形成組沒有「找到了」,照登記不跑驗證組。")
         return
-    later = evaluate(
-        setting, hits, lambda _c, d: d > FORMATION_END, (FORMATION_END, last)
-    )
-    report(
-        "\n驗證組(2022 起,只看「找到了」的持有期,不再校正):",
-        [r for r, f in zip(later, found, strict=True) if f],
-        None,
-    )
+    for label, hits in groups.items():
+        if not any(found[label]):
+            continue
+        later = evaluate(
+            setting, hits, lambda _c, d: d > FORMATION_END, (FORMATION_END, last)
+        )
+        report(
+            f"\n驗證組(2022 起,{label},只看「找到了」的持有期,不再校正):",
+            [r for r, f in zip(later, found[label], strict=True) if f],
+            None,
+        )
 
 
 def main() -> int:
