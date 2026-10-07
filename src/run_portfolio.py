@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from datetime import date
 
 RAW = Path("data/raw")
+#: 除權息、減資、變更面額(fetch_actions)。持有期間遇到的交易,報酬是用未還原股價算的
+ACTIONS = Path("data/out/corporate_actions.csv")
 #: 本金分檔(#33 事前寫下的)
 CAPITALS = (1_000_000, 3_000_000, 10_000_000, 30_000_000)
 SECOND = 2
@@ -52,6 +54,22 @@ def _benchmark(index: dict[date, float], days: pd.DatetimeIndex) -> pd.Series:
     return series.reindex(days).ffill().dropna()
 
 
+def touched_by_actions(runs: pd.DataFrame, actions: pd.DataFrame) -> pd.Series:
+    """持有期間(買進日之後、賣出日當天以前)有沒有股本事件。
+
+    事件研究的報酬用未還原股價算(#59):除息讓報酬偏低,減資讓股價跳上去變成
+    假獲利。還原之前,用「排除這些交易」當敏感度檢查。
+    """
+    by_code: dict[str, list[pd.Timestamp]] = {}
+    for code, day in zip(actions.code.astype(str), actions.day, strict=True):
+        by_code.setdefault(code, []).append(pd.Timestamp(day))
+    flags = [
+        any(pd.Timestamp(b) < d <= pd.Timestamp(e) for d in by_code.get(str(c), []))
+        for c, b, e in zip(runs.code, runs.buy_day, runs.sell_day, strict=True)
+    ]
+    return pd.Series(flags, index=runs.index)
+
+
 def main() -> int:
     """兩組樣本 × 四檔本金,加上大盤基準。"""
     cli.no_args(__doc__)
@@ -72,7 +90,17 @@ def main() -> int:
     print("每個訊號買 1 張,錢不夠就跳過;來回成本 0.585% 在賣出時扣\n")
     print(_line("加權指數", bench, "(買進持有)"))
 
-    for label, sample in (("全部", runs), ("第二次處置", runs[runs.nth == SECOND])):
+    actions = pd.read_csv(ACTIONS, dtype={"code": str}, parse_dates=["day"])
+    touched = touched_by_actions(runs, actions)
+    clean = runs[~touched]
+    print(f"持有期間遇到股本事件的交易 {int(touched.sum())} 筆;敏感度檢查會把它們拿掉")
+    samples = (
+        ("全部", runs),
+        ("第二次處置", runs[runs.nth == SECOND]),
+        ("全部,排除股本事件", clean),
+        ("第二次,排除股本事件", clean[clean.nth == SECOND]),
+    )
+    for label, sample in samples:
         trades = sample[["code", "buy_day", "sell_day", "buy", "sell"]].assign(
             code=sample.code.astype(str)
         )

@@ -94,3 +94,15 @@ def test_最長連續虧損筆數() -> None:
     assert losing_streak([]) == 0
     # 剛好 0 不算虧
     assert losing_streak([-1.0, 0.0, -1.0]) == 1
+
+
+def test_持有期間有股本事件的交易要標出來() -> None:
+    from src.run_portfolio import touched_by_actions
+
+    runs = pd.DataFrame(
+        {"code": ["A", "A", "B"], "buy_day": [DAYS[0]] * 3, "sell_day": [DAYS[2]] * 3}
+    )
+    runs.loc[1, "code"] = "C"
+    actions = pd.DataFrame({"code": ["A", "B"], "day": [DAYS[2], DAYS[0]]})
+    # A:賣出日當天除息 → 算;B:買進日當天 → 不算(買的是除息後的價);C:沒有事件
+    assert touched_by_actions(runs, actions).tolist() == [True, False, False]
