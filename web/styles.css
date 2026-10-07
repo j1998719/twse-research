@@ -409,6 +409,7 @@ footer {
 	font-size: 13px;
 	letter-spacing: 0.04em;
 }
+.holders th:nth-child(2),
 .holders td:nth-child(2) {
 	text-align: left;
 }
