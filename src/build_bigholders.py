@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -35,13 +35,12 @@ from src.flows import FLOW_KEYS, load_flows
 from src.tdcc import SNAPSHOT_TOTAL_LEVEL, parse_snapshot, snapshot_day
 from src.tpex import is_common_stock
 from src.universe import all_prices
+from src.weekly import BIG_LEVELS, Week, fields, load_weeks, week_closes
 
 
 if TYPE_CHECKING:
     from src.tdcc import Band
 
-#: 400 張以上的四個級距,由小到大。網頁用索引對應門檻,順序不能動
-BIG_LEVELS = (12, 13, 14, 15)
 #: 跟 BIG_LEVELS 一一對應的門檻(張)
 THRESHOLDS = (400, 600, 800, 1000)
 
@@ -53,6 +52,12 @@ HISTORY = Path("data/out/long_prices.csv")
 #: 籌碼總覽的來源:上市、上櫃三大法人,以及融資融券(#42)
 CHIP_FILES = [Path("data/out/chips.csv"), Path("data/out/otc_chips.csv")]
 MARGIN = Path("data/out/margin.csv")
+#: 單檔查詢頁往回補的週資料(fetch_tdcc_history,#49)
+WEEKS_DIR = Path("data/raw/tdcc_weeks")
+#: 每檔放幾週:最新一週 + 往回 8 週
+MAX_WEEKS = 9
+#: build() 的週資料:週次日期(新的在前)、每週每檔四級、每檔每週還原收盤
+Weekly = tuple[list[date], dict[date, dict[str, Week]], dict[str, list[float | None]]]
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
@@ -128,15 +133,23 @@ def _long_fields(lt: LongTerm | None) -> dict[str, float | None]:
     }
 
 
-def load_long_term(
+def load_adjusted(
     actions: Path = ACTIONS, history: Path = HISTORY
-) -> dict[str, LongTerm] | None:
-    """還原因子和長期日線都有才算均線,缺一個就回 None。"""
+) -> pd.DataFrame | None:
+    """2016 起的還原收盤。還原因子和長期日線缺一個就回 None。"""
     if not actions.exists() or not history.exists():
         return None
     events = pd.read_csv(actions, dtype={"code": str}, parse_dates=["day"])
     prices = pd.read_csv(history, dtype={"code": str}, parse_dates=["day"])
-    return long_term(adjusted_closes(prices[["code", "day", "close"]], events))
+    return adjusted_closes(prices[["code", "day", "close"]], events)
+
+
+def load_long_term(
+    actions: Path = ACTIONS, history: Path = HISTORY
+) -> dict[str, LongTerm] | None:
+    """還原因子和長期日線都有才算均線,缺一個就回 None。"""
+    adjusted = load_adjusted(actions, history)
+    return None if adjusted is None else long_term(adjusted)
 
 
 def build(
@@ -145,6 +158,7 @@ def build(
     quotes: dict[str, dict[str, Any]],
     long: dict[str, LongTerm] | None = None,
     flows: dict[str, dict[str, Any]] | None = None,
+    weekly: Weekly | None = None,
 ) -> dict[str, Any]:
     """組出網頁要的 JSON。
 
@@ -176,6 +190,11 @@ def build(
                 "prevPct": prev_pct,
                 **_long_fields(None if long is None else long.get(code)),
                 **((flows or {}).get(code) or dict.fromkeys(FLOW_KEYS)),
+                **(
+                    fields(code, *weekly)
+                    if weekly
+                    else {"weekPct": [], "weekPeople": [], "weekClose": []}
+                ),
             }
         )
     day = snapshot_day(now_text)
@@ -189,6 +208,8 @@ def build(
         # 整塊不算,不拿原始收盤價頂替
         "maReady": long is not None,
         "flowsReady": flows is not None,
+        # 週次日期,新的在前;每檔的 weekPct / weekPeople / weekClose 照這個順序
+        "weeks": [] if not weekly else [d.isoformat() for d in weekly[0]],
         "rows": rows,
     }
 
@@ -206,13 +227,16 @@ def main() -> int:
     if not quotes:
         print("沒有行情資料,先跑 src.fetch_prices 和 src.fetch_tpex", file=sys.stderr)
         return 1
-    long = load_long_term()
+    adjusted = load_adjusted()
+    long = None if adjusted is None else long_term(adjusted)
+    days, weeks = load_weeks(ARCHIVE, WEEKS_DIR, MAX_WEEKS)
+    closes = {} if adjusted is None else week_closes(adjusted, days)
     if long is None:
         print(f"沒有 {ACTIONS} 或 {HISTORY},這次不算長期均線")
     flows = load_flows(CHIP_FILES, MARGIN)
     if flows is None:
         print("沒有法人或融資融券的資料,這次不算籌碼總覽")
-    report = build(now_text, prev_text, quotes, long, flows)
+    report = build(now_text, prev_text, quotes, long, flows, (days, weeks, closes))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     print(

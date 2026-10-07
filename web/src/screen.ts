@@ -22,6 +22,28 @@ function round2(value: number): number {
 /** 大戶門檻的級距:0 = 400 張以上 … 3 = 1000 張以上 */
 export type Level = 0 | 1 | 2 | 3;
 
+/** 算一個欄位需要知道的設定:大戶門檻,以及「過去 n 週」的 n(#49) */
+export interface Ctx {
+	level: Level;
+	n: number;
+}
+
+/** 最新一週減 n 週前,從 level 那一級往上加總。任一週沒資料就是 null */
+function weekDiff(weeks: readonly (number[] | null)[], c: Ctx): number | null {
+	const now = weeks[0];
+	const then = weeks[c.n];
+	if (!now || !then) return null;
+	return round2(sumFrom(now, c.level) - sumFrom(then, c.level));
+}
+
+/** 同一段期間的還原股價漲跌 % */
+function priceChange(r: HolderRow, n: number): number | null {
+	const now = r.weekClose[0];
+	const then = r.weekClose[n];
+	if (now == null || then == null || then <= 0) return null;
+	return round2((now / then - 1) * 100);
+}
+
 export interface Metric {
 	label: string;
 	/** 顯示在數值後面 */
@@ -36,13 +58,12 @@ export interface Metric {
 	step: number;
 	/** 表格欄位的短標題 */
 	short: string;
-	get(row: HolderRow, level: Level): number | null;
+	get(row: HolderRow, c: Ctx): number | null;
 }
 
 export type Op = ">=" | "<=";
 
-const big = (r: HolderRow, level: Level): number =>
-	round2(sumFrom(r.pct, level));
+const big = (r: HolderRow, c: Ctx): number => round2(sumFrom(r.pct, c.level));
 
 /** 可以拿來當條件、也可以排序的欄位。順序就是「新增條件」選單的順序 */
 export const METRICS = {
@@ -66,10 +87,10 @@ export const METRICS = {
 		op: ">=",
 		value: 0.5,
 		step: 0.1,
-		get: (r, level) =>
+		get: (r, c) =>
 			r.prevPct === null
 				? null
-				: round2(sumFrom(r.pct, level) - sumFrom(r.prevPct, level)),
+				: round2(sumFrom(r.pct, c.level) - sumFrom(r.prevPct, c.level)),
 	},
 	people: {
 		label: "大戶人數",
@@ -80,7 +101,54 @@ export const METRICS = {
 		op: ">=",
 		value: 10,
 		step: 1,
-		get: (r, level) => sumFrom(r.people, level),
+		get: (r, c) => sumFrom(r.people, c.level),
+	},
+	bigChgN: {
+		label: "大戶持股 {n} 週增減",
+		short: "大戶 {n} 週",
+		unit: "百分點",
+		digits: 2,
+		signed: true,
+		op: ">=",
+		value: 1,
+		step: 0.5,
+		get: (r, c) => weekDiff(r.weekPct, c),
+	},
+	peopleChgN: {
+		label: "大戶人數 {n} 週增減",
+		short: "人數 {n} 週",
+		unit: "人",
+		digits: 0,
+		signed: true,
+		op: ">=",
+		value: 1,
+		step: 1,
+		get: (r, c) => weekDiff(r.weekPeople, c),
+	},
+	priceMoveN: {
+		label: "{n} 週股價變動幅度(漲跌都算)",
+		short: "{n} 週變動",
+		unit: "%",
+		digits: 2,
+		signed: false,
+		op: "<=",
+		value: 5,
+		step: 1,
+		get: (r, c) => {
+			const v = priceChange(r, c.n);
+			return v === null ? null : Math.abs(v);
+		},
+	},
+	priceChgN: {
+		label: "{n} 週股價漲跌",
+		short: "{n} 週漲跌",
+		unit: "%",
+		digits: 2,
+		signed: true,
+		op: "<=",
+		value: 5,
+		step: 1,
+		get: (r, c) => priceChange(r, c.n),
 	},
 	gap10y: {
 		label: "收盤價距十年線",
@@ -236,6 +304,8 @@ export type Filter =
 
 export interface Screen {
 	level: Level;
+	/** 「過去 n 週」的 n */
+	weeks: number;
 	filters: Filter[];
 	sort: MetricKey;
 	/** desc = 由大到小 */
@@ -247,6 +317,7 @@ export interface Screen {
 export function defaultScreen(): Screen {
 	return {
 		level: 3,
+		weeks: 4,
 		filters: [
 			{ id: 1, on: true, kind: "metric", metric: "lots", op: ">=", value: 100 },
 		],
@@ -270,10 +341,10 @@ export function newFilter(kind: MetricKey | "market", id: number): Filter {
 	};
 }
 
-function passes(row: HolderRow, f: Filter, level: Level): boolean {
+function passes(row: HolderRow, f: Filter, c: Ctx): boolean {
 	if (!f.on) return true;
 	if (f.kind === "market") return row.market === f.market;
-	const v = METRICS[f.metric].get(row, level);
+	const v = METRICS[f.metric].get(row, c);
 	if (v === null) return false;
 	return f.op === ">=" ? v >= f.value : v <= f.value;
 }
@@ -284,16 +355,21 @@ export function matches(row: HolderRow, query: string): boolean {
 	return q === "" || row.code.includes(q) || row.name.includes(q);
 }
 
+export function ctx(screen: Screen): Ctx {
+	return { level: screen.level, n: screen.weeks };
+}
+
 /** 符合所有勾選條件的股票,照排序欄位排好。排序欄位是 null 的一律放最後 */
 export function run(rows: readonly HolderRow[], screen: Screen): HolderRow[] {
 	const metric = METRICS[screen.sort];
+	const c = ctx(screen);
 	const keyed = rows
 		.filter(
 			(r) =>
 				matches(r, screen.query) &&
-				screen.filters.every((f) => passes(r, f, screen.level)),
+				screen.filters.every((f) => passes(r, f, c)),
 		)
-		.map((r) => ({ r, v: metric.get(r, screen.level) }));
+		.map((r) => ({ r, v: metric.get(r, c) }));
 	keyed.sort((a, b) => {
 		if (a.v === null) return b.v === null ? 0 : 1;
 		if (b.v === null) return -1;
@@ -316,6 +392,9 @@ export function columns(screen: Screen): MetricKey[] {
 	return out;
 }
 
+/** n 最多幾週:最新一週往回 8 週(bigholders.json 每檔放 9 週) */
+export const MAX_WEEKS = 8;
+
 /** 從 localStorage 讀回來的東西不可信:欄位不對就整個用預設 */
 export function restore(raw: unknown): Screen {
 	const fallback = defaultScreen();
@@ -327,10 +406,13 @@ export function restore(raw: unknown): Screen {
 	const sort =
 		typeof s.sort === "string" && isMetric(s.sort) ? s.sort : fallback.sort;
 	const dir = s.dir === "asc" || s.dir === "desc" ? s.dir : fallback.dir;
+	const n = Number(s.weeks);
+	const weeks =
+		Number.isInteger(n) && n >= 1 && n <= MAX_WEEKS ? n : fallback.weeks;
 	const filters = Array.isArray(s.filters)
 		? s.filters.filter(validFilter)
 		: fallback.filters;
-	return { level, sort, dir, filters, query: "" };
+	return { level, weeks, sort, dir, filters, query: "" };
 }
 
 function validFilter(f: unknown): f is Filter {

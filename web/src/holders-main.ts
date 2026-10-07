@@ -10,10 +10,12 @@ import { type HolderRow, type Holders, parseHolders } from "./holders.ts";
 import { EXTERNAL, yahooQuote } from "./links.ts";
 import {
 	columns,
+	ctx,
 	defaultScreen,
 	type Filter,
 	isMetric,
 	type Level,
+	MAX_WEEKS,
 	METRICS,
 	type MetricKey,
 	newFilter,
@@ -29,7 +31,20 @@ const PAGE = 100;
 /** 記住自己堆的條件。只在這個瀏覽器,換裝置不會跟著走 */
 const STORE = "holders.screen.v1";
 /** 標題要帶出目前大戶門檻的欄位 */
-const LEVELLED: readonly MetricKey[] = ["big", "bigWeek", "people"];
+const LEVELLED: readonly MetricKey[] = [
+	"big",
+	"bigWeek",
+	"people",
+	"bigChgN",
+	"peopleChgN",
+];
+/** 用到週資料的欄位 */
+const WEEKLY: readonly MetricKey[] = [
+	"bigChgN",
+	"peopleChgN",
+	"priceMoveN",
+	"priceChgN",
+];
 /** 法人與融資融券來源的欄位 */
 const FLOWS: readonly MetricKey[] = [
 	"inst5",
@@ -70,8 +85,11 @@ function load(): Screen {
 
 function persist(): void {
 	try {
-		const { level, filters, sort, dir } = screen;
-		localStorage.setItem(STORE, JSON.stringify({ level, filters, sort, dir }));
+		const { level, weeks, filters, sort, dir } = screen;
+		localStorage.setItem(
+			STORE,
+			JSON.stringify({ level, weeks, filters, sort, dir }),
+		);
 	} catch {
 		// 私密視窗、封鎖儲存:不記也照常運作
 	}
@@ -85,10 +103,16 @@ function threshold(): number {
 	return data.thresholds[screen.level] ?? 1000;
 }
 
+/** 把 {n} 換成目前選的週數 */
+function withN(text: string): string {
+	return text.replace("{n}", String(screen.weeks));
+}
+
 /** 大戶相關的欄位標題要帶出目前的門檻 */
 function title(key: MetricKey): string {
 	const m = METRICS[key];
-	return LEVELLED.includes(key) ? `${m.short}(${threshold()}+)` : m.short;
+	const short = withN(m.short);
+	return LEVELLED.includes(key) ? `${short}(${threshold()}+)` : short;
 }
 
 function format(key: MetricKey, v: number | null): string {
@@ -124,8 +148,8 @@ function filterRow(f: Filter): string {
 	if (f.kind === "market") return marketRow(f, check, remove);
 	const m = METRICS[f.metric];
 	const label = LEVELLED.includes(f.metric)
-		? `${m.label}(${threshold()} 張以上)`
-		: m.label;
+		? `${withN(m.label)}(${threshold()} 張以上)`
+		: withN(m.label);
 	return `<li class="${f.on ? "" : "off"}">${check}<span class="what">${label}</span>
   <select data-act="op" data-id="${f.id}" aria-label="比較">
    <option value=">=" ${f.op === ">=" ? "selected" : ""}>≥</option>
@@ -172,9 +196,10 @@ function onFilterEvent(event: Event): void {
 function rowHtml(r: HolderRow, rank: number, keys: MetricKey[]): string {
 	const stale =
 		r.day === latestDay ? "" : ` <small class="qual">${r.day.slice(5)}</small>`;
+	const c = ctx(screen);
 	const cells = keys
 		.map((key) => {
-			const v = METRICS[key].get(r, screen.level);
+			const v = METRICS[key].get(r, c);
 			const extra = key === "close" ? stale : "";
 			const strong = key === screen.sort ? " strong" : "";
 			return `<td class="num ${tone(key, v)}${strong}">${format(key, v)}${extra}</td>`;
@@ -201,6 +226,12 @@ function pendingNote(keys: MetricKey[]): string {
 	if (data.prevDay === null && keys.includes("bigWeek")) {
 		notes.push(
 			"目前只有一週的集保資料,還沒有「比上週」;每週存一份之後就會有。",
+		);
+	}
+	const have = Math.max(0, data.weeks.length - 1);
+	if (keys.some((k) => WEEKLY.includes(k)) && screen.weeks > have) {
+		notes.push(
+			`過去幾週的集保資料還在往回補,目前最多只能看 ${have} 週;選 ${screen.weeks} 週的話,這幾欄暫時是空的。`,
 		);
 	}
 	return notes.join(" ");
@@ -231,6 +262,7 @@ function draw(): void {
 		);
 	}
 	el<HTMLSelectElement>("sort").value = screen.sort;
+	el<HTMLSelectElement>("weeks").value = String(screen.weeks);
 	el<HTMLSelectElement>("dir").value = screen.dir;
 }
 
@@ -250,7 +282,7 @@ function levelButtons(): HTMLButtonElement[] {
 
 function fillSelects(): void {
 	const options = (Object.keys(METRICS) as MetricKey[])
-		.map((k) => `<option value="${k}">${METRICS[k].label}</option>`)
+		.map((k) => `<option value="${k}">${withN(METRICS[k].label)}</option>`)
 		.join("");
 	el("sort").innerHTML = options;
 	el("add").innerHTML =
@@ -287,6 +319,19 @@ function bindControls(): void {
 			changed();
 		});
 	}
+	const weeks = el<HTMLSelectElement>("weeks");
+	const have = Math.max(0, data.weeks.length - 1);
+	weeks.innerHTML = Array.from({ length: MAX_WEEKS }, (_, i) => i + 1)
+		.map(
+			(n) =>
+				`<option value="${n}">${n} 週${n > have ? "(資料補齊中)" : ""}</option>`,
+		)
+		.join("");
+	weeks.addEventListener("change", () => {
+		screen.weeks = Number(weeks.value);
+		fillSelects();
+		changed();
+	});
 	const sort = el<HTMLSelectElement>("sort");
 	sort.addEventListener("change", () => {
 		if (isMetric(sort.value)) screen.sort = sort.value;

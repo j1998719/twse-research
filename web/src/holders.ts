@@ -43,6 +43,10 @@ export interface HolderRow {
 	shortChg5: number | null;
 	/** 券資比 % = 融券 / 融資 */
 	shortRatio: number | null;
+	/** 每週的四級佔比、人數、還原收盤,順序同 Holders.weeks(新的在前)。那週沒資料是 null(#49) */
+	weekPct: (number[] | null)[];
+	weekPeople: (number[] | null)[];
+	weekClose: (number | null)[];
 }
 
 export interface Holders {
@@ -56,6 +60,8 @@ export interface Holders {
 	maReady: boolean;
 	/** 法人與融資融券資料到了沒 */
 	flowsReady: boolean;
+	/** 週次日期,新的在前 */
+	weeks: string[];
 	rows: HolderRow[];
 }
 
@@ -67,6 +73,7 @@ export const REQUIRED_KEYS: readonly (keyof Holders)[] = [
 	"thresholds",
 	"maReady",
 	"flowsReady",
+	"weeks",
 	"rows",
 ];
 

@@ -662,3 +662,22 @@ a.quote:focus-visible {
 	color: var(--muted);
 	text-decoration: line-through;
 }
+
+/* 「過去 n 週」選單:跟大戶門檻同一排的設定 */
+.weeks-pick {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-weight: 700;
+}
+.weeks-pick select {
+	font: inherit;
+	font-size: 17px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1.5px solid var(--hair);
+	border-radius: 6px;
+	padding: 6px 10px;
+	min-height: 44px;
+}
