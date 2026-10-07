@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from src.tdcc import parse_snapshot, snapshot_day
+from src.tdcc import SNAPSHOT_TOTAL_LEVEL, parse_snapshot, snapshot_day
 
 
 if TYPE_CHECKING:
@@ -51,6 +51,10 @@ LABELS = (
     "1,000,001以上",
 )
 
+#: 總股東只有這麼多人的那一週當成沒有資料:減資、變更面額換發股票期間,集保把
+#: 全部股票記在一個持有人名下(千張 100%),不是大戶(2601 益航、1441 大東,#34)
+LONE_HOLDER = 1
+
 #: 一檔一週:([15 級佔比], [15 級人數])
 Week = tuple[list[float], list[int]]
 
@@ -59,6 +63,9 @@ def from_snapshot(text: str) -> dict[str, Week]:
     """全市場快照 → 代號 -> 15 級。缺的級距是 0(那一級沒有人)。"""
     out: dict[str, Week] = {}
     for code, bands in parse_snapshot(text).items():
+        total = bands.get(SNAPSHOT_TOTAL_LEVEL)
+        if total is not None and total.people <= LONE_HOLDER:
+            continue
         pct = [bands[lv].pct if lv in bands else 0.0 for lv in LEVELS]
         people = [bands[lv].people if lv in bands else 0 for lv in LEVELS]
         out[code] = (pct, people)
@@ -69,6 +76,9 @@ def from_history(data: dict[str, dict[str, list[float]]]) -> dict[str, Week]:
     """單檔查詢頁補回來的一週 → 代號 -> 15 級。級距值是 [人數, 股數, 佔比]。"""
     out: dict[str, Week] = {}
     for code, bands in data.items():
+        total = bands.get("total")
+        if total and total[0] <= LONE_HOLDER:
+            continue
         rows = [bands.get(label) for label in LABELS]
         pct = [float(r[2]) if r else 0.0 for r in rows]
         people = [int(r[0]) if r else 0 for r in rows]

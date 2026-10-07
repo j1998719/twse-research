@@ -40,7 +40,7 @@ from src.flows import FLOW_KEYS, load_flows
 from src.tdcc import SNAPSHOT_TOTAL_LEVEL, parse_snapshot, snapshot_day
 from src.tpex import is_common_stock
 from src.universe import all_prices
-from src.weekly import LEVELS, Week, fields, load_weeks, week_closes
+from src.weekly import LEVELS, LONE_HOLDER, Week, fields, load_weeks, week_closes
 
 
 if TYPE_CHECKING:
@@ -157,6 +157,25 @@ def load_long_term(
     return None if adjusted is None else long_term(adjusted)
 
 
+def _previous_week(
+    prev_text: str | None, weekly: Weekly | None
+) -> tuple[dict[str, list[float]], date | None]:
+    """「比上週」的基準:每檔上一週的 15 級佔比,以及那一週的日期。
+
+    有前一份全市場快照就用它;沒有的話,用往回補的單檔週資料(#49)的上一週 ——
+    以前要等下週五存到第二份快照才有「比上週」(#34),其實補回來的資料已經有了。
+    """
+    if prev_text:
+        prev = parse_snapshot(prev_text)
+        return {code: _levels(bands)[0] for code, bands in prev.items()}, snapshot_day(
+            prev_text
+        )
+    if weekly and len(weekly[0]) > 1:
+        last = weekly[0][1]
+        return {code: week[0] for code, week in weekly[1][last].items()}, last
+    return {}, None
+
+
 def build(
     now_text: str,
     prev_text: str | None,
@@ -171,20 +190,20 @@ def build(
     沒有名稱也沒有行情,放進表格只會是一列看不懂的代號。
     """
     now = parse_snapshot(now_text)
-    prev = parse_snapshot(prev_text) if prev_text else {}
+    prev_pcts, prev_day = _previous_week(prev_text, weekly)
     rows: list[dict[str, Any]] = []
     for code, bands in sorted(now.items()):
         quote = quotes.get(code)
         if quote is None or not is_common_stock(code):
             continue
         total = bands.get(SNAPSHOT_TOTAL_LEVEL)
-        if total is None or total.people <= 1:
+        if total is None or total.people <= LONE_HOLDER:
             # 減資、變更面額換發股票的期間,集保把全部股票記在一個持有人名下
             # (2601 益航 2026-10-02:股東 1 人、千張級距 100%)。那不是大戶,
             # 是換發中的暫時狀態,放進來會排在大戶持股第一名
             continue
         pct, people = _levels(bands)
-        prev_pct = _levels(prev[code])[0] if code in prev else None
+        prev_pct = prev_pcts.get(code)
         rows.append(
             {
                 "code": code,
@@ -205,7 +224,6 @@ def build(
             }
         )
     day = snapshot_day(now_text)
-    prev_day = snapshot_day(prev_text) if prev_text else None
     return {
         "generated": datetime.now(tz=TAIPEI).date().isoformat(),
         "day": None if day is None else day.isoformat(),

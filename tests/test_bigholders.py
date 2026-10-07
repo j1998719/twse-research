@@ -191,3 +191,26 @@ def test_很久沒成交的不列_成交量只算最新一天() -> None:
     assert out["2330"]["lots"] == 5000
     assert out["1101"]["lots"] == 0
     assert out["1101"]["day"] == "2026-09-25"
+
+
+def test_沒有前一份快照_用往回補的週資料當上週() -> None:
+    # 全市場快照只有最新一週;往回補的單檔週資料(#49)有上一週,
+    # 不用等下週五的第二份快照,「比上週」現在就算得出來(#34)
+    from datetime import date
+
+    from src.weekly import LEVELS
+
+    last = date(2026, 9, 24)
+    prev = [0.0] * len(LEVELS)
+    prev[11:] = [1.0, 1.0, 1.0, 45.0]
+    weeks = {date(2026, 10, 2): {}, last: {"3105": (prev, [0] * len(LEVELS))}}
+    out = build(
+        NOW, None, {"3105": QUOTE}, weekly=([date(2026, 10, 2), last], weeks, {})
+    )
+    assert out["prevDay"] == "2026-09-24"
+    assert out["rows"][0]["prevPct"] == prev
+
+
+def test_有前一份快照就用快照() -> None:
+    out = build(NOW, PREV, {"3105": QUOTE})
+    assert out["prevDay"] == "2026-09-25"
