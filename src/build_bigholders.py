@@ -31,6 +31,7 @@ import pandas as pd
 
 from src.adjust import LongTerm, adjusted_closes, long_term
 from src.fetch_tdcc import ARCHIVE
+from src.flows import FLOW_KEYS, load_flows
 from src.tdcc import SNAPSHOT_TOTAL_LEVEL, parse_snapshot, snapshot_day
 from src.tpex import is_common_stock
 from src.universe import all_prices
@@ -49,6 +50,9 @@ OUT = Path("data/out/bigholders.json")
 ACTIONS = Path("data/out/corporate_actions.csv")
 #: 2016 起的日線(fetch_history)。prices.csv 只從 2020 開始,不夠算十年線
 HISTORY = Path("data/out/long_prices.csv")
+#: 籌碼總覽的來源:上市、上櫃三大法人,以及融資融券(#42)
+CHIP_FILES = [Path("data/out/chips.csv"), Path("data/out/otc_chips.csv")]
+MARGIN = Path("data/out/margin.csv")
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
@@ -124,6 +128,7 @@ def build(
     prev_text: str | None,
     quotes: dict[str, dict[str, Any]],
     long: dict[str, LongTerm] | None = None,
+    flows: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """組出網頁要的 JSON。
 
@@ -154,6 +159,7 @@ def build(
                 "people": people,
                 "prevPct": prev_pct,
                 **_long_fields(None if long is None else long.get(code)),
+                **((flows or {}).get(code) or dict.fromkeys(FLOW_KEYS)),
             }
         )
     day = snapshot_day(now_text)
@@ -166,6 +172,7 @@ def build(
         # 均線一律用還原股價算(Jordan 2026-10-06)。還原資料還沒有的時候
         # 整塊不算,不拿原始收盤價頂替
         "maReady": long is not None,
+        "flowsReady": flows is not None,
         "rows": rows,
     }
 
@@ -186,7 +193,10 @@ def main() -> int:
     long = load_long_term()
     if long is None:
         print(f"沒有 {ACTIONS} 或 {HISTORY},這次不算長期均線")
-    report = build(now_text, prev_text, quotes, long)
+    flows = load_flows(CHIP_FILES, MARGIN)
+    if flows is None:
+        print("沒有法人或融資融券的資料,這次不算籌碼總覽")
+    report = build(now_text, prev_text, quotes, long, flows)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     print(

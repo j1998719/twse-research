@@ -30,6 +30,19 @@ export interface HolderRow {
 	/** 收盤價比均線高或低幾 %,負的就是跌破 */
 	gap5y: number | null;
 	gap10y: number | null;
+	/** 外資、投信、自營商近 5 個交易日買賣超(張),正的是買超 */
+	foreign5: number | null;
+	trust5: number | null;
+	dealer5: number | null;
+	/** 三大法人合計近 20 個交易日(張) */
+	inst20: number | null;
+	/** 融資、融券餘額(張)與 5 個交易日的增減 */
+	margin: number | null;
+	marginChg5: number | null;
+	short: number | null;
+	shortChg5: number | null;
+	/** 券資比 % = 融券 / 融資 */
+	shortRatio: number | null;
 }
 
 export interface Holders {
@@ -41,6 +54,8 @@ export interface Holders {
 	thresholds: number[];
 	/** 還原股價算好了沒。false 時均線區塊顯示「準備中」,不拿原始收盤頂替 */
 	maReady: boolean;
+	/** 法人與融資融券資料到了沒 */
+	flowsReady: boolean;
 	rows: HolderRow[];
 }
 
@@ -51,6 +66,7 @@ export const REQUIRED_KEYS: readonly (keyof Holders)[] = [
 	"prevDay",
 	"thresholds",
 	"maReady",
+	"flowsReady",
 	"rows",
 ];
 
@@ -142,4 +158,36 @@ export function belowMa(
 	const key = (r: HolderRow): number =>
 		(filter.ma10y ? r.gap10y : r.gap5y) ?? 0;
 	return picked.sort((a, b) => key(a) - key(b));
+}
+
+export type FlowKey =
+	| "inst5"
+	| "foreign5"
+	| "trust5"
+	| "inst20"
+	| "marginChg5"
+	| "shortRatio";
+
+/** 三大法人近 5 日合計 */
+export function inst5(row: HolderRow): number | null {
+	if (row.foreign5 === null || row.trust5 === null || row.dealer5 === null) {
+		return null;
+	}
+	return row.foreign5 + row.trust5 + row.dealer5;
+}
+
+/** 籌碼總覽的排序:由大到小,null 排最後 */
+export function sortFlows(
+	rows: readonly HolderRow[],
+	key: FlowKey,
+): HolderRow[] {
+	const value = (r: HolderRow): number | null =>
+		key === "inst5" ? inst5(r) : r[key];
+	return [...rows].sort((a, b) => {
+		const x = value(a);
+		const y = value(b);
+		if (x === null) return y === null ? 0 : 1;
+		if (y === null) return -1;
+		return y - x;
+	});
 }

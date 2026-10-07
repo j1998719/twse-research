@@ -27,6 +27,7 @@
  <div class="tabs" role="tablist" aria-label="切換清單">
   <button type="button" role="tab" id="tab-holders" aria-controls="holders-section" data-tab="holders">大戶持股排行</button>
   <button type="button" role="tab" id="tab-ma" aria-controls="ma-section" data-tab="ma">跌破長期均線</button>
+  <button type="button" role="tab" id="tab-flows" aria-controls="flows-section" data-tab="flows">籌碼總覽</button>
  </div>
 
  <section id="holders-section" role="tabpanel" aria-labelledby="tab-holders">
@@ -110,6 +111,41 @@
    </table>
   </div>
   <button type="button" class="more" id="ma-more" hidden></button>
+ </section>
+
+ <section id="flows-section" role="tabpanel" aria-labelledby="tab-flows">
+  <div class="controls">
+   <div class="row">
+    <label>排序
+     <select id="flow-sort">
+      <option value="inst5">三大法人近 5 日買超</option>
+      <option value="foreign5">外資近 5 日買超</option>
+      <option value="trust5">投信近 5 日買超</option>
+      <option value="inst20">三大法人近 20 日買超</option>
+      <option value="marginChg5">融資近 5 日增加</option>
+      <option value="shortRatio">券資比</option>
+     </select>
+    </label>
+    <label class="grow">搜尋
+     <input id="flow-q" type="search" inputmode="search" placeholder="代號或股名">
+    </label>
+   </div>
+   <p class="count" id="flow-count"></p>
+  </div>
+  <p class="note" id="flows-pending" hidden>法人與融資融券的資料還在準備中。</p>
+  <div class="scroll" id="flow-table">
+   <table class="rank-table">
+    <thead><tr>
+     <th>#</th><th>股票</th><th>收盤</th>
+     <th>千張大戶</th><th class="opt">大戶週變化</th>
+     <th>法人 5 日</th><th class="opt">外資</th><th class="opt">投信</th>
+     <th class="opt">融資餘額</th><th>融資 5 日</th><th class="opt">券資比</th>
+    </tr></thead>
+    <tbody id="flow-rows"></tbody>
+   </table>
+  </div>
+  <button type="button" class="more" id="flow-more" hidden></button>
+  <p class="qual">單位:張。法人是買賣超(正的是買超);融資 5 日是餘額跟 5 個交易日前比;券資比 = 融券餘額 ÷ 融資餘額。</p>
  </section>
 
  <div class="note">

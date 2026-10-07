@@ -5,13 +5,16 @@ import {
 	type Big,
 	belowMa,
 	bigHolders,
+	type FlowKey,
 	type HolderRow,
 	type Holders,
+	inst5,
 	type MaFilter,
 	matches,
 	parseHolders,
 	type SortKey,
 	sortBig,
+	sortFlows,
 } from "./holders.ts";
 
 declare const HOLDERS_DATA: unknown;
@@ -206,7 +209,7 @@ function bind(): void {
 	});
 }
 
-const TABS = ["holders", "ma"] as const;
+const TABS = ["holders", "ma", "flows"] as const;
 type Tab = (typeof TABS)[number];
 
 /** 一次只顯示一份清單。網址的 #ma 可以直接打開均線那一頁 */
@@ -214,8 +217,73 @@ function showTab(tab: Tab): void {
 	for (const name of TABS) {
 		const selected = name === tab;
 		el(`tab-${name}`).setAttribute("aria-selected", String(selected));
-		el(name === "ma" ? "ma-section" : "holders-section").hidden = !selected;
+		el(`${name}-section`).hidden = !selected;
 	}
+}
+
+/** 籌碼總覽 */
+const flowState = { sort: "inst5" as FlowKey, query: "", shown: PAGE };
+
+/** 張數:千分位,正數加號 */
+function lots(value: number | null): string {
+	if (value === null) return "—";
+	return `${value > 0 ? "+" : ""}${thousands(value)}`;
+}
+
+function flowRowHtml(r: HolderRow, rank: number): string {
+	const big = r.pct[r.pct.length - 1] ?? 0;
+	const prev = r.prevPct?.[r.prevPct.length - 1];
+	const weekly =
+		prev === undefined ? null : Math.round((big - prev) * 100) / 100;
+	const total = inst5(r);
+	return `<tr>
+ <td class="num rank">${rank}</td>
+ <td><b class="code">${escapeHtml(r.code)}</b> ${escapeHtml(r.name)}<small class="qual mk">${r.market === "otc" ? "櫃" : "市"}</small></td>
+ <td class="num">${r.close.toFixed(2)}</td>
+ <td class="num">${big.toFixed(2)}%</td>
+ <td class="num opt ${sign(weekly)}">${points(weekly)}</td>
+ <td class="num strong ${sign(total)}">${lots(total)}</td>
+ <td class="num opt ${sign(r.foreign5)}">${lots(r.foreign5)}</td>
+ <td class="num opt ${sign(r.trust5)}">${lots(r.trust5)}</td>
+ <td class="num opt">${r.margin === null ? "—" : thousands(r.margin)}</td>
+ <td class="num ${sign(r.marginChg5)}">${lots(r.marginChg5)}</td>
+ <td class="num opt">${r.shortRatio === null ? "—" : `${r.shortRatio.toFixed(2)}%`}</td>
+</tr>`;
+}
+
+function drawFlows(): void {
+	if (!data.flowsReady) return;
+	const items = sortFlows(
+		data.rows.filter((r) => matches(r, flowState.query)),
+		flowState.sort,
+	);
+	el("flow-rows").innerHTML = items
+		.slice(0, flowState.shown)
+		.map((r, i) => flowRowHtml(r, i + 1))
+		.join("");
+	el("flow-count").textContent = `共 ${thousands(items.length)} 檔`;
+	const more = el<HTMLButtonElement>("flow-more");
+	more.hidden = items.length <= flowState.shown;
+	more.textContent = `再顯示 ${Math.min(PAGE, items.length - flowState.shown)} 檔`;
+}
+
+function bindFlows(): void {
+	const sortBox = el<HTMLSelectElement>("flow-sort");
+	sortBox.addEventListener("change", () => {
+		flowState.sort = sortBox.value as FlowKey;
+		flowState.shown = PAGE;
+		drawFlows();
+	});
+	const search = el<HTMLInputElement>("flow-q");
+	search.addEventListener("input", () => {
+		flowState.query = search.value;
+		flowState.shown = PAGE;
+		drawFlows();
+	});
+	el("flow-more").addEventListener("click", () => {
+		flowState.shown += PAGE;
+		drawFlows();
+	});
 }
 
 function bindTabs(): void {
@@ -223,13 +291,14 @@ function bindTabs(): void {
 		el(`tab-${name}`).addEventListener("click", () => {
 			showTab(name);
 			try {
-				history.replaceState(null, "", name === "ma" ? "#ma" : "#");
+				history.replaceState(null, "", name === "holders" ? "#" : `#${name}`);
 			} catch {
 				// 有些檢視器不讓改網址,不影響切換
 			}
 		});
 	}
-	showTab(location.hash === "#ma" ? "ma" : "holders");
+	const fromHash = TABS.find((name) => `#${name}` === location.hash);
+	showTab(fromHash ?? "holders");
 }
 
 function main(): void {
@@ -250,11 +319,17 @@ function main(): void {
 		el("ma-pending").hidden = false;
 		el("ma-table").hidden = true;
 	}
+	if (!data.flowsReady) {
+		el("flows-pending").hidden = false;
+		el("flow-table").hidden = true;
+	}
 	bind();
 	bindMa();
+	bindFlows();
 	bindTabs();
 	draw();
 	drawMa();
+	drawFlows();
 }
 
 main();
