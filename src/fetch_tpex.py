@@ -91,9 +91,17 @@ def fetch_punishes(start: date, end: date) -> int:
 def main(argv: list[str]) -> int:
     """抓行情與處置公告。"""
     start, end = cli.date_range(__doc__, argv[1:])
-    fetch_punishes(start, end)
+    # 處置公告七年一個請求,回應很大,伺服器偶爾中途斷線(2026-10-08 兩次)。
+    # 斷了也要照樣抓行情 —— 以前公告一失敗就整支結束,行情跟著漏掉(#37)。
+    # 上一份 tpex_punishes.csv 只在成功時覆蓋,所以失敗時保留舊的
+    failed = False
+    try:
+        fetch_punishes(start, end)
+    except (OSError, ValueError) as exc:
+        print(f"處置公告失敗({type(exc).__name__}),保留上一份", flush=True)
+        failed = True
     fetch_prices(start, end)
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

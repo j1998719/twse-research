@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+import os
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
+from src.prices import TAIPEI
 from src.tpex import (
     cached_quotes,
     clean_text,
@@ -250,6 +252,26 @@ class TestCachedQuotes:
         cached_quotes(date(2026, 9, 27), tmp_path, pause=0)
         cached_quotes(date(2026, 9, 27), tmp_path, pause=0)
         assert len(calls) == 1
+
+    def test_當天寫的空檔案要重抓(self, tmp_path: Path, monkeypatch) -> None:
+        # 10-07 00:58 問 10-07 還沒收盤,存了空檔 —— 那不代表 10-07 沒交易(#37)
+        empty = tmp_path / "otc_20261007.json"
+        empty.write_text("", encoding="utf-8")
+        same_day = datetime(2026, 10, 7, 0, 58, tzinfo=TAIPEI).timestamp()
+        os.utime(empty, (same_day, same_day))
+        monkeypatch.setattr(
+            "src.tpex.fetch_quotes",
+            lambda _: _payload(QUOTE_FIELDS, [_quote_row("3105")]),
+        )
+        assert cached_quotes(date(2026, 10, 7), tmp_path, pause=0) is not None
+
+    def test_隔天之後寫的空檔案才算非交易日(self, tmp_path: Path, monkeypatch) -> None:
+        empty = tmp_path / "otc_20261010.json"
+        empty.write_text("", encoding="utf-8")
+        next_day = datetime(2026, 10, 11, 8, 0, tzinfo=TAIPEI).timestamp()
+        os.utime(empty, (next_day, next_day))
+        monkeypatch.setattr("src.tpex.fetch_quotes", lambda _: pytest.fail("不該再抓"))
+        assert cached_quotes(date(2026, 10, 10), tmp_path, pause=0) is None
 
     def test_快取的內容讀回來和抓到的一樣(self, tmp_path: Path, monkeypatch) -> None:
         payload = _payload(QUOTE_FIELDS, [_quote_row("3105")])

@@ -43,6 +43,13 @@ MIN_GROUP = 6
 
 def second_dispositions(prices: pd.DataFrame, punishes: pd.DataFrame) -> pd.DataFrame:
     """第二次處置,每一筆帶 W1、W2(百萬元)與兩版超額報酬。"""
+    return numbered_dispositions(prices, punishes, (SECOND,))
+
+
+def numbered_dispositions(
+    prices: pd.DataFrame, punishes: pd.DataFrame, nths: tuple[int, ...]
+) -> pd.DataFrame:
+    """第 nths 次的處置,每一筆帶 W1、W2(百萬元)與兩版超額報酬(#9 也用)。"""
     days = trading_days(prices)
     levels = chain_levels(punishes, prices, days)
     runs = pre_release_run(
@@ -51,12 +58,12 @@ def second_dispositions(prices: pd.DataFrame, punishes: pd.DataFrame) -> pd.Data
     events = {
         (e.code, e.tags["start"]): e
         for e in disposition_events(runs)
-        if e.tags["truly_released"] and e.tags["nth"] == SECOND
+        if e.tags["truly_released"] and e.tags["nth"] in nths
     }
     calendar: list[date] = [d.date() for d in days]
     closes = closes_by_code(prices, all_actions())
     rows = []
-    second = punishes[punishes.nth == SECOND]
+    second = punishes[punishes.nth.isin(nths)]
     for row, (w1, w2) in zip(
         second.to_dict("records"),
         levels.loc[second.index].itertuples(index=False),
@@ -72,6 +79,10 @@ def second_dispositions(prices: pd.DataFrame, punishes: pd.DataFrame) -> pd.Data
         rows.append(
             {
                 "code": code,
+                "nth": int(row["nth"]),
+                "condition": str(row["condition"]),
+                "market": str(row["market"]),
+                "announced": pd.Timestamp(row["announced"]),
                 "start": pd.Timestamp(row["start"]),
                 "entry": span[0],
                 "month": f"{span[0]:%Y-%m}",

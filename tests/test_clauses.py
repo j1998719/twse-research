@@ -45,6 +45,12 @@ class TestWindowFor:
         assert window_for("連續三次及當日沖銷標準") == 3
         assert window_for("連續五次及當日沖銷標準") == 5
 
+    def test_上櫃的寫法(self):
+        assert window_for("連續3個營業日") == 3
+        assert window_for("連續5個營業日及沖銷標準") == 5
+        assert window_for("最近10個營業日內有6個營業日") == 10
+        assert window_for("最近30個營業日內有12個營業日") == 30
+
     def test_認不得的條件用最長的回看期間(self):
         # 寧可多看一些,也不要漏掉真正觸發它的注意
         assert window_for("監視業務督導會報決議") == 30

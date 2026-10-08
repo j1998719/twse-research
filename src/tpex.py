@@ -18,11 +18,11 @@ import re
 import time
 import urllib.request
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from src.net import TLS
-from src.prices import to_float
+from src.prices import TAIPEI, to_float
 
 
 if TYPE_CHECKING:
@@ -135,15 +135,21 @@ def cached_quotes(
 
     留空檔案是為了讓非交易日也算「處理過」—— 不留的話每次重跑都會再問一次
     那些永遠沒有資料的日子,七年下來是幾百個白費的請求。
+
+    但空檔案只有在**那一天過完之後**寫的才可信:當天(或更早)問的時候還沒收盤,
+    回應本來就是空的。2026-10-07 00:58 就這樣存了一個空檔,10-07 的上櫃行情
+    之後永遠不會再抓(#37)。所以當天寫的空檔案當作沒抓過,重抓。
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     cached = cache_dir / f"otc_{day:%Y%m%d}.json"
     if cached.exists():
         raw = cached.read_text(encoding="utf-8")
-        if not raw.strip():
+        if raw.strip():
+            hit: dict[str, Any] = json.loads(raw)
+            return hit
+        written = datetime.fromtimestamp(cached.stat().st_mtime, tz=TAIPEI).date()
+        if written > day:
             return None
-        hit: dict[str, Any] = json.loads(raw)
-        return hit
 
     payload = fetch_quotes(day)
     _fields, data = _rows(payload)

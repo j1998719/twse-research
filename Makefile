@@ -42,4 +42,11 @@ holders:       ## 重新產生 bigholders.json 並建置大戶持股頁
 	$(VENV)/python -m src.build_bigholders
 	$(NODE) npm run build:holders
 
-.PHONY: pyver check fix lint format-check types test dead docs-check web-check e2e report holders
+PLIST := com.j1998719.twse-research.update.plist
+schedule:      ## 安裝每天 08:00 的 launchd 排程(#37)
+	mkdir -p $(HOME)/Library/LaunchAgents
+	cp ops/$(PLIST) $(HOME)/Library/LaunchAgents/$(PLIST)
+	launchctl bootout gui/$$(id -u)/$(basename $(PLIST)) 2>/dev/null || true
+	launchctl bootstrap gui/$$(id -u) $(HOME)/Library/LaunchAgents/$(PLIST)
+
+.PHONY: pyver check fix lint format-check types test dead docs-check web-check e2e report holders schedule
